@@ -159,6 +159,48 @@ check_reboot(
 
 
 /**
+ * Sets device for quiet install.
+ *
+ * @param hDeviceInfoSet  A handle to a device information set that contains a device
+ *                      information element that represents the device.
+ *
+ * @param pDeviceInfoData  A pointer to an SP_DEVINFO_DATA structure that specifies the
+ *                      device information element in hDeviceInfoSet.
+ *
+ * @return ERROR_SUCCESS on success; Win32 error code otherwise
+ **/
+static DWORD
+set_quiet(
+    _In_ HDEVINFO hDeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA pDeviceInfoData)
+{
+    SP_DEVINSTALL_PARAMS devinstall_params = { .cbSize = sizeof(SP_DEVINSTALL_PARAMS) };
+    if (!SetupDiGetDeviceInstallParams(
+            hDeviceInfoSet,
+            pDeviceInfoData,
+            &devinstall_params))
+    {
+        DWORD dwResult = GetLastError();
+        msg(M_NONFATAL | M_ERRNO, "%s: SetupDiGetDeviceInstallParams failed", __FUNCTION__);
+        return dwResult;
+    }
+
+    devinstall_params.Flags |= DI_QUIETINSTALL;
+    if (!SetupDiSetDeviceInstallParams(
+            hDeviceInfoSet,
+            pDeviceInfoData,
+            &devinstall_params))
+    {
+        DWORD dwResult = GetLastError();
+        msg(M_NONFATAL | M_ERRNO, "%s: SetupDiSetDeviceInstallParams failed", __FUNCTION__);
+        return dwResult;
+    }
+
+    return ERROR_SUCCESS;
+}
+
+
+/**
  * Deletes the device.
  *
  * @param hDeviceInfoSet  A handle to a device information set that contains a device
@@ -722,6 +764,12 @@ tap_create_adapter(
         dwResult = GetLastError();
         msg(M_NONFATAL, "%s: SetupDiCreateDeviceInfo failed", __FUNCTION__);
         goto cleanup_hDevInfoList;
+    }
+
+    if (hwndParent == NULL)
+    {
+        /* We are doing unattended install. Ask to create adapter quietly. */
+        set_quiet(hDevInfoList, &devinfo_data);
     }
 
     /* Set a device information element as the selected member of a device information set. */
