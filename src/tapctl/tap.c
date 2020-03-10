@@ -798,7 +798,7 @@ tap_create_adapter(
     if (!SetupDiBuildDriverInfoList(
             hDevInfoList,
             &devinfo_data,
-            SPDIT_CLASSDRIVER))
+            SPDIT_COMPATDRIVER))
     {
         dwResult = GetLastError();
         msg(M_NONFATAL, "%s: SetupDiBuildDriverInfoList failed", __FUNCTION__);
@@ -820,7 +820,7 @@ tap_create_adapter(
         if (!SetupDiEnumDriverInfo(
                 hDevInfoList,
                 &devinfo_data,
-                SPDIT_CLASSDRIVER,
+                SPDIT_COMPATDRIVER,
                 dwIndex,
                 &drvinfo_data))
         {
@@ -1010,7 +1010,7 @@ cleanup_DriverInfoList:
     SetupDiDestroyDriverInfoList(
         hDevInfoList,
         &devinfo_data,
-        SPDIT_CLASSDRIVER);
+        SPDIT_COMPATDRIVER);
 
 cleanup_hDevInfoList:
     SetupDiDestroyDeviceInfoList(hDevInfoList);
