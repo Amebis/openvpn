@@ -29,6 +29,7 @@
 
 #include <windows.h>
 #include <cfgmgr32.h>
+#include <ipifcons.h>
 #include <objbase.h>
 #include <setupapi.h>
 #include <stdio.h>
@@ -551,6 +552,8 @@ get_reg_string(
  *
  * @param pguidAdapter  A pointer to GUID that receives network adapter ID.
  *
+ * @param pdwIfType     A pointer to DWORD that receives interface type.
+ *
  * @return ERROR_SUCCESS on success; Win32 error code otherwise
  **/
 static DWORD
@@ -558,7 +561,8 @@ get_net_adapter_guid(
     _In_ HDEVINFO hDeviceInfoSet,
     _In_ PSP_DEVINFO_DATA pDeviceInfoData,
     _In_ int iNumAttempts,
-    _Out_ LPGUID pguidAdapter)
+    _Out_ LPGUID pguidAdapter,
+    _Out_opt_ LPDWORD pdwIfType)
 {
     DWORD dwResult = ERROR_BAD_ARGUMENTS;
 
@@ -613,6 +617,23 @@ get_net_adapter_guid(
 
         dwResult = SUCCEEDED(CLSIDFromString(szCfgGuidString, (LPCLSID)pguidAdapter)) ? ERROR_SUCCESS : ERROR_INVALID_DATA;
         free(szCfgGuidString);
+
+        if (pdwIfType)
+        {
+            DWORD dwValueType = REG_NONE, dwSize = sizeof(*pdwIfType);
+            dwResult = RegQueryValueEx(
+                hKey,
+                TEXT("*IfType"),
+                NULL,
+                &dwValueType,
+                (BYTE *)pdwIfType,
+                &dwSize);
+            if (dwResult != ERROR_SUCCESS || dwValueType != REG_DWORD || dwSize != sizeof(*pdwIfType))
+            {
+                *pdwIfType = IF_TYPE_OTHER;
+            }
+        }
+
         break;
     }
 
@@ -839,7 +860,7 @@ tap_create_adapter(
     }
 
     /* Get network adapter ID from registry. Retry for max 30sec. */
-    dwResult = get_net_adapter_guid(hDevInfoList, &devinfo_data, 30, pguidAdapter);
+    dwResult = get_net_adapter_guid(hDevInfoList, &devinfo_data, 30, pguidAdapter, NULL);
 
 cleanup_remove_device:
     if (dwResult != ERROR_SUCCESS)
@@ -981,7 +1002,7 @@ execute_on_first_adapter(
 
         /* Get adapter GUID. */
         GUID guidAdapter;
-        dwResult = get_net_adapter_guid(hDevInfoList, &devinfo_data, 1, &guidAdapter);
+        dwResult = get_net_adapter_guid(hDevInfoList, &devinfo_data, 1, &guidAdapter, NULL);
         if (dwResult != ERROR_SUCCESS)
         {
             /* Something is wrong with this device. Skip it. */
@@ -1259,7 +1280,8 @@ tap_list_adapters(
 
         /* Get adapter GUID. */
         GUID guidAdapter;
-        dwResult = get_net_adapter_guid(hDevInfoList, &devinfo_data, 1, &guidAdapter);
+        DWORD dwIfType;
+        dwResult = get_net_adapter_guid(hDevInfoList, &devinfo_data, 1, &guidAdapter, &dwIfType);
         if (dwResult != ERROR_SUCCESS)
         {
             /* Something is wrong with this device. Skip it. */
@@ -1321,6 +1343,7 @@ tap_list_adapters(
         memcpy(node->szzHardwareIDs, szzDeviceHardwareIDs, hwid_size);
         node->szName = (LPTSTR)((LPBYTE)node->szzHardwareIDs + hwid_size);
         memcpy(node->szName, szName, name_size);
+        node->dwIfType = dwIfType;
         node->pNext = NULL;
         if (pAdapterTail)
         {
@@ -1330,6 +1353,12 @@ tap_list_adapters(
         else
         {
             *ppAdapter = pAdapterTail = node;
+        }
+
+        if (CM_Get_DevNode_Status(&node->ulStatus, &node->ulProblemNumber, devinfo_data.DevInst, 0) != CR_SUCCESS)
+        {
+            node->ulStatus = 0;
+            node->ulProblemNumber = 0;
         }
 
 cleanup_szName:

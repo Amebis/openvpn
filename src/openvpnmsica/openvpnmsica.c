@@ -303,10 +303,18 @@ find_adapters(
         }
     }
 
+    OSVERSIONINFOEX osvi = { sizeof(OSVERSIONINFOEX), HIBYTE(_WIN32_WINNT_WIN8), LOBYTE(_WIN32_WINNT_WIN8) };
+    DWORDLONG const dwlConditionMask = VerSetConditionMask(VerSetConditionMask(0, VER_MAJORVERSION, VER_GREATER_EQUAL), VER_MINORVERSION, VER_GREATER_EQUAL);
+    BOOL bSkipLegacyAdapters = !VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask);
+
     /* Count adapters. */
     size_t adapter_count = 0;
     for (struct tap_adapter_node *pAdapter = pAdapterList; pAdapter; pAdapter = pAdapter->pNext)
     {
+        if (bSkipLegacyAdapters && pAdapter->dwIfType != IF_TYPE_PROP_VIRTUAL)
+        {
+            continue;
+        }
         adapter_count++;
     }
 
@@ -331,6 +339,11 @@ find_adapters(
 
     for (struct tap_adapter_node *pAdapter = pAdapterList; pAdapter; pAdapter = pAdapter->pNext)
     {
+        if (bSkipLegacyAdapters && pAdapter->dwIfType != IF_TYPE_PROP_VIRTUAL)
+        {
+            continue;
+        }
+
         /* Convert adapter GUID to UTF-16 string. (LPOLESTR defaults to LPWSTR) */
         LPOLESTR szAdapterId = NULL;
         StringFromIID((REFIID)&pAdapter->guid, &szAdapterId);
