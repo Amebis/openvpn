@@ -138,6 +138,9 @@ struct tap_adapter_node
     GUID guid;             /** Adapter GUID */
     LPTSTR szzHardwareIDs; /** Device hardware ID(s) */
     LPTSTR szName;         /** Adapter name */
+    DWORD dwIfType;        /** Interface type. One of IF_TYPE_* constants. */
+    ULONG ulStatus;        /** Device status. A bitwise combination of the DN_* constants. */
+    ULONG ulProblemNumber; /** When ulStatus has DN_HAS_PROBLEM set, this member is one of the CM_PROB_* constants. */
 
     struct tap_adapter_node *pNext; /** Pointer to next adapter */
 };
