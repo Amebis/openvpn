@@ -2146,6 +2146,7 @@ ServiceStartInteractive(DWORD dwArgc, LPTSTR *lpszArgv)
             break;
         }
 
+wait:
         error = WaitForMultipleObjects(handle_count, handles, FALSE, INFINITE);
         if (error == WAIT_OBJECT_0)
         {
@@ -2184,7 +2185,6 @@ ServiceStartInteractive(DWORD dwArgc, LPTSTR *lpszArgv)
         }
         else
         {
-            CancelIo(pipe);
             if (error == WAIT_FAILED)
             {
                 MsgToEventLog(M_SYSERR, TEXT("WaitForMultipleObjects failed"));
@@ -2206,6 +2206,7 @@ ServiceStartInteractive(DWORD dwArgc, LPTSTR *lpszArgv)
             HANDLE thread = RemoveListItem(&threads, CmpHandle, handles[error]);
             UpdateWaitHandles(&handles, &handle_count, io_event, exit_event, threads);
             CloseHandleEx(&thread);
+            goto wait;
         }
     }
 
