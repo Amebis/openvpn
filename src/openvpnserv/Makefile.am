@@ -20,6 +20,9 @@ EXTRA_DIST = \
 AM_CPPFLAGS = \
 	-I$(top_srcdir)/include -I$(top_srcdir)/src/openvpn -I$(top_srcdir)/src/compat
 
+AM_CFLAGS = \
+	$(TAP_CFLAGS)
+
 if WIN32
 sbin_PROGRAMS = openvpnserv
 openvpnserv_CFLAGS = \
@@ -33,8 +36,10 @@ openvpnserv_SOURCES = \
         common.c \
 	automatic.c \
 	interactive.c \
+	error.c \
 	service.c service.h \
 	validate.c validate.h \
 	$(top_srcdir)/src/openvpn/block_dns.c $(top_srcdir)/src/openvpn/block_dns.h \
 	openvpnserv_resources.rc \
-	$(top_srcdir)/src/openvpn/ring_buffer.h
+	$(top_srcdir)/src/openvpn/ring_buffer.h \
+	$(top_srcdir)/src/openvpn/wintun_hlp.c $(top_srcdir)/src/openvpn/wintun_hlp.h
