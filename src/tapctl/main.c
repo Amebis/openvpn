@@ -81,8 +81,7 @@ static const TCHAR usage_message_create[] =
     TEXT("               Note: This name can also be specified as OpenVPN's --dev-node   \n")
     TEXT("               option.                                                         \n")
     TEXT("--hwid <hwid>  Adapter hardware ID. Default value is root\\tap0901, which       \n")
-    TEXT("               describes tap-windows6 driver. To work with wintun driver,      \n")
-    TEXT("               specify 'wintun'.                                               \n")
+    TEXT("               describes tap-windows6 driver.                                  \n")
     TEXT("\n")
     TEXT("Output:\n")
     TEXT("\n")
@@ -100,8 +99,8 @@ static const TCHAR usage_message_list[] =
     TEXT("\n")
     TEXT("Options:\n")
     TEXT("\n")
-    TEXT("--hwid <hwid>  Adapter hardware ID. By default, root\\tap0901, tap0901 and      \n")
-    TEXT("               wintun adapters are listed. Use this switch to limit the list.  \n")
+    TEXT("--hwid <hwid>  Adapter hardware ID. By default, root\\tap0901 and tap0901       \n")
+    TEXT("               adapters are listed. Use this switch to limit the list.         \n")
     TEXT("\n")
     TEXT("Output:\n")
     TEXT("\n")
@@ -273,8 +272,7 @@ create_delete_adapter:
     {
         TCHAR szzHwId[0x100] =
             TEXT("root\\") TEXT(TAP_WIN_COMPONENT_ID) TEXT("\0")
-            TEXT(TAP_WIN_COMPONENT_ID) TEXT("\0")
-            TEXT("Wintun\0");
+            TEXT(TAP_WIN_COMPONENT_ID) TEXT("\0");
 
         /* Parse options. */
         for (int i = 2; i < argc; i++)
