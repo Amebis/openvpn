@@ -2,7 +2,7 @@
  *  openvpnmsica -- Custom Action DLL to provide OpenVPN-specific support to MSI packages
  *                  https://community.openvpn.net/openvpn/wiki/OpenVPNMSICA
  *
- *  Copyright (C) 2018 Simon Rozman <simon@rozman.si>
+ *  Copyright (C) 2018-2021 Simon Rozman <simon@rozman.si>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -107,6 +107,11 @@ dont_mute(unsigned int flags)
 void
 x_msg_va(const unsigned int flags, const char *format, va_list arglist)
 {
+    if (flags & M_DEBUG)
+    {
+        return;
+    }
+
     /* Secure last error before it is overridden. */
     DWORD dwResult = (flags & M_ERRNO) != 0 ? GetLastError() : ERROR_SUCCESS;
 
