@@ -25,6 +25,7 @@
 #define OPENVPN_MSG_H_
 
 #include <windows.h>
+#include <ipexport.h>
 
 typedef enum {
     msg_acknowledgement,
@@ -41,7 +42,9 @@ typedef enum {
     msg_del_block_dns,
     msg_register_dns,
     msg_enable_dhcp,
+    msg_create_wintun_adapter,
     msg_register_ring_buffers,
+    msg_unregister_ring_buffers,
     msg_set_mtu
 } message_type_t;
 
@@ -121,6 +124,12 @@ typedef struct {
     message_header_t header;
     interface_t iface;
 } enable_dhcp_message_t;
+
+typedef struct {
+    message_header_t header;
+    WCHAR requested_name[MAX_ADAPTER_NAME];
+    GUID requested_adapter_id;
+} create_wintun_adapter_message_t;
 
 typedef struct {
     message_header_t header;

@@ -142,6 +142,7 @@
     <VcpkgTriplet>x64-windows-ovpn</VcpkgTriplet>
   </PropertyGroup>
   <ItemGroup>
+    <ClCompile Include="..\openvpn\wintun_hlp.c" />
     <ClCompile Include="..\tapctl\error.c" />
     <ClCompile Include="..\tapctl\tap.c" />
     <ClCompile Include="dllmain.c" />
@@ -150,6 +151,7 @@
     <ClCompile Include="openvpnmsica.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\openvpn\wintun_hlp.h" />
     <ClInclude Include="..\tapctl\basic.h" />
     <ClInclude Include="..\tapctl\error.h" />
     <ClInclude Include="..\tapctl\tap.h" />
