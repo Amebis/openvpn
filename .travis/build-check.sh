@@ -22,7 +22,7 @@ if [ -z ${CHOST+x} ]; then
 	make check
 	${EXTRA_SCRIPT:-}
 else
-	export TAP_CFLAGS="-I${PWD}/tap-windows-${TAP_WINDOWS_VERSION}/include"
+	export TAP_CFLAGS="-I${PWD}/tap-windows-${TAP_WINDOWS_VERSION}/include -I${PWD}/wintun/include"
 	export LZO_CFLAGS="-I${PREFIX}/include"
 	export LZO_LIBS="-L${PREFIX}/lib -llzo2"
 	export PKCS11_HELPER_LIBS="-L${PREFIX}/lib -lpkcs11-helper"
