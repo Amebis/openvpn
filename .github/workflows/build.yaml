@@ -22,6 +22,7 @@ jobs:
       PKCS11_HELPER_VERSION: "1.26"
       OPENSSL_VERSION: "1.1.1j"
       TAP_WINDOWS_VERSION: "9.23.3"
+      WINTUN_VERSION: "0.14.1"
       CHOST: ${{ matrix.chost }}
       TARGET: ${{ matrix.target }}
     steps:
@@ -46,7 +47,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: '~/mingw/'
-          key: ${{ matrix.target }}-mingw-${{ env.LZO_VERSION }}-${{ env.PKCS11_HELPER_VERSION }}-${{ env.TAP_WINDOWS_VERSION }}
+          key: ${{ matrix.target }}-mingw-${{ env.LZO_VERSION }}-${{ env.PKCS11_HELPER_VERSION }}-${{ env.TAP_WINDOWS_VERSION }}-${{ env.WINTUN_VERSION }}
 
       # Repeating  if: steps.cache.outputs.cache-hit != 'true'
       # on every step for building dependencies is ugly but
@@ -56,6 +57,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           wget -c -P download-cache/ "https://build.openvpn.net/downloads/releases/tap-windows-${TAP_WINDOWS_VERSION}.zip"
+          wget -c -P download-cache/ "https://www.wintun.net/builds/wintun-${WINTUN_VERSION}.zip"
           wget -c -P download-cache/ "https://www.oberhumer.com/opensource/lzo/download/lzo-${LZO_VERSION}.tar.gz"
           wget -c -P download-cache/ "https://github.com/OpenSC/pkcs11-helper/archive/pkcs11-helper-${PKCS11_HELPER_VERSION}.tar.gz"
           wget -c -P download-cache/ "https://www.openssl.org/source/old/1.1.1/openssl-${OPENSSL_VERSION}.tar.gz"
@@ -63,6 +65,7 @@ jobs:
           tar zxf "download-cache/openssl-${OPENSSL_VERSION}.tar.gz"
           tar zxf "download-cache/lzo-${LZO_VERSION}.tar.gz"
           unzip download-cache/tap-windows-${TAP_WINDOWS_VERSION}.zip
+          unzip download-cache/wintun-${WINTUN_VERSION}.zip
 
       - name: Configure OpenSSL
         if: steps.cache.outputs.cache-hit != 'true'
@@ -117,6 +120,10 @@ jobs:
       - name: copy tap-windows.h header
         if: steps.cache.outputs.cache-hit != 'true'
         run: cp ./tap-windows-9.23.3/include/tap-windows.h ${HOME}/mingw/opt/include/
+
+      - name: copy wintun.h header
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cp ./wintun/include/wintun.h ${HOME}/mingw/opt/include/
 
       - name: configure OpenVPN
         run: PKG_CONFIG_PATH=${HOME}/mingw/opt/lib/pkgconfig DCO_SOURCEDIR=$(realpath ../ovpn-dco-win) LDFLAGS=-L$HOME/mingw/opt/lib CFLAGS=-I$HOME/mingw/opt/include OPENSSL_LIBS="-L${HOME}/opt/lib -lssl -lcrypto" OPENSSL_CFLAGS=-I$HOME/mingw/opt/include PREFIX=$HOME/mingw/opt LZO_CFLAGS=-I$HOME/mingw/opt/include LZO_LIBS="-L${HOME}/mingw/opt/lib -llzo2" ./configure  --host=${CHOST} --disable-lz4 --enable-dco
@@ -303,8 +310,8 @@ jobs:
       - name: Run MSBuild consuming vcpkg.json
         working-directory: ${{env.GITHUB_WORKSPACE}}
         run: |
-            vcpkg integrate install
-            msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform="${{ matrix.plat }}" .
+          vcpkg integrate install
+          msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform="${{ matrix.plat }}" .
 
       - name: Archive artifacts
         uses: actions/upload-artifact@v2
