@@ -129,6 +129,7 @@ openvpn_SOURCES = \
 	tun.c tun.h \
 	vlan.c vlan.h \
 	win32.h win32.c \
+	wintun_hlp.h wintun_hlp.c \
 	cryptoapi.h cryptoapi.c
 openvpn_LDADD = \
 	$(top_builddir)/src/compat/libcompat.la \
@@ -143,5 +144,5 @@ openvpn_LDADD = \
 	$(OPTIONAL_INOTIFY_LIBS)
 if WIN32
 openvpn_SOURCES += openvpn_win32_resources.rc block_dns.c block_dns.h ring_buffer.h
-openvpn_LDADD += -lgdi32 -lws2_32 -lwininet -lcrypt32 -liphlpapi -lwinmm -lfwpuclnt -lrpcrt4 -lncrypt -lsetupapi
+openvpn_LDADD += -lgdi32 -lws2_32 -lwininet -lcrypt32 -liphlpapi -lwinmm -lfwpuclnt -lrpcrt4 -lncrypt -lsetupapi -lole32
 endif
