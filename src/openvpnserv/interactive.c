@@ -1462,8 +1462,10 @@ HandleMessage(HANDLE pipe, HANDLE ovpn_proc, ring_buffer_handles_t *ring_buffer_
             .size = sizeof(ack),
             .message_id = -1
         },
-        .error_number = ERROR_MESSAGE_DATA
+        .error_number = ERROR_MESSAGE_DATA,
+        .trailing_size = 0
     };
+    void *trailing_data = NULL;
 
     read = ReadPipeAsync(pipe, &msg, bytes, count, events);
     if (read != bytes || read < sizeof(msg.header) || read != msg.header.size)
@@ -1544,6 +1546,11 @@ HandleMessage(HANDLE pipe, HANDLE ovpn_proc, ring_buffer_handles_t *ring_buffer_
 
 out:
     WritePipeAsync(pipe, &ack, sizeof(ack), count, events);
+    if (ack.trailing_size)
+    {
+        WritePipeAsync(pipe, trailing_data, ack.trailing_size, count, events);
+    }
+    free(trailing_data);
 }
 
 
