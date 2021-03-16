@@ -139,11 +139,13 @@
     <ClCompile Include="error.c" />
     <ClCompile Include="tap.c" />
     <ClCompile Include="main.c" />
+    <ClCompile Include="..\openvpn\wintun_hlp.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="basic.h" />
     <ClInclude Include="error.h" />
     <ClInclude Include="tap.h" />
+    <ClInclude Include="..\openvpn\wintun_hlp.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="tapctl_resources.rc" />
