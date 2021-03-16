@@ -22,6 +22,13 @@ download_tap_windows () {
     fi
 }
 
+download_wintun () {
+    if [ ! -f "download-cache/wintun-${WINTUN_VERSION}.zip" ]; then
+       wget -P download-cache/ \
+           "https://www.wintun.net/builds/wintun-${WINTUN_VERSION}.zip"
+    fi
+}
+
 download_lzo () {
     if [ ! -f "download-cache/lzo-${LZO_VERSION}.tar.gz" ]; then
         wget -P download-cache/ \
@@ -161,6 +168,9 @@ fi
 if [ ! -z ${CHOST+x} ]; then
       download_tap_windows
       unzip download-cache/tap-windows-${TAP_WINDOWS_VERSION}.zip
+
+      download_wintun
+      unzip download-cache/wintun-${WINTUN_VERSION}.zip
 
       download_lzo
       build_lzo
