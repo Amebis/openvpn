@@ -243,6 +243,9 @@
     <ClCompile Include="ssl_ncp.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="wintun_hlp.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="base64.h">
@@ -507,6 +510,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ssl_ncp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="wintun_hlp.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

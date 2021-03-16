@@ -24,6 +24,8 @@
 #include "service.h"
 #include "validate.h"
 
+#include <stdio.h>
+
 LPCTSTR service_instance = TEXT("");
 static wchar_t win_sys_path[MAX_PATH];
 
@@ -55,6 +57,18 @@ openvpn_sntprintf(LPTSTR str, size_t size, LPCTSTR format, ...)
         va_end(arglist);
     }
     return res;
+}
+
+BOOL
+openvpn_vsnprintf(char *const str, const size_t size, const char *const format, va_list arglist)
+{
+    int len = -1;
+    if (size > 0)
+    {
+        len = vsnprintf(str, size, format, arglist);
+        str[size - 1] = '\0';
+    }
+    return (len >= 0 && len < size);
 }
 
 BOOL
