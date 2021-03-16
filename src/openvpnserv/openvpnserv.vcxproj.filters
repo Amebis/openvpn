@@ -33,6 +33,12 @@
     <ClCompile Include="..\openvpn\block_dns.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\openvpn\wintun_hlp.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="error.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="service.h">
@@ -45,6 +51,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\openvpn\ring_buffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\openvpn\wintun_hlp.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
