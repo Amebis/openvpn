@@ -31,12 +31,10 @@ EXTRA_DIST = \
 AM_CPPFLAGS = \
 	-I$(top_srcdir)/include -I$(top_srcdir)/src/compat
 
-AM_CFLAGS = \
-	$(TAP_CFLAGS)
-
 if WIN32
 sbin_PROGRAMS = tapctl
 tapctl_CFLAGS = \
+	$(TAP_CFLAGS) \
 	-municode -D_UNICODE \
 	-UNTDDI_VERSION -U_WIN32_WINNT \
 	-D_WIN32_WINNT=_WIN32_WINNT_VISTA
@@ -48,4 +46,5 @@ tapctl_SOURCES = \
 	error.c error.h \
 	main.c \
 	tap.c tap.h \
-	tapctl_resources.rc
+	tapctl_resources.rc \
+	$(top_srcdir)/src/openvpn/wintun_hlp.c $(top_srcdir)/src/openvpn/wintun_hlp.h

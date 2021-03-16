@@ -261,7 +261,8 @@ void tuncfg(const char *dev, const char *dev_type, const char *dev_node,
             const char *groupname, const struct tuntap_options *options,
             openvpn_net_ctx_t *ctx);
 
-const char *guess_tuntap_dev(const char *dev,
+const char *guess_tuntap_dev(struct tuntap *tt,
+                             const char *dev,
                              const char *dev_type,
                              const char *dev_node,
                              struct gc_arena *gc);

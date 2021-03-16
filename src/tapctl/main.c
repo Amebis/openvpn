@@ -4,7 +4,7 @@
  *
  *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *  Copyright (C) 2008-2013 David Sommerseth <dazo@users.sourceforge.net>
- *  Copyright (C) 2018 Simon Rozman <simon@rozman.si>
+ *  Copyright (C) 2018-2021 Simon Rozman <simon@rozman.si>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -31,6 +31,7 @@
 
 #include "tap.h"
 #include "error.h"
+#include "../openvpn/wintun_hlp.h"
 
 #include <objbase.h>
 #include <setupapi.h>
@@ -132,6 +133,55 @@ usage(void)
 }
 
 
+static BOOL CALLBACK
+print_wintun_adapter(_In_ WINTUN_ADAPTER_HANDLE Adapter, _In_ LPARAM Param)
+{
+    UNREFERENCED_PARAMETER(Param);
+    GUID guid;
+    LPOLESTR szAdapterId = NULL;
+    WCHAR szAdapterName[MAX_ADAPTER_NAME];
+
+    get_wintun_adapter_guid(Adapter, &guid);
+    StringFromIID((REFIID)&guid, &szAdapterId);
+    if (WintunGetAdapterName(Adapter, szAdapterName))
+    {
+        _ftprintf(stdout, TEXT("%") TEXT(PRIsLPOLESTR) TEXT("\t%ls\n"), szAdapterId, szAdapterName);
+    }
+    else
+    {
+        _ftprintf(stdout, TEXT("%") TEXT(PRIsLPOLESTR) TEXT("\tFailed to get adapter name (error 0x%x).\n"), szAdapterId, GetLastError());
+    }
+    CoTaskMemFree(szAdapterId);
+
+    return TRUE;
+}
+
+
+struct delete_wintun_adapter_params {
+    LPGUID pguidAdapterID;
+    LPBOOL pbRebootRequired;
+    int *piResult;
+};
+
+
+static BOOL CALLBACK
+delete_wintun_adapter(_In_ WINTUN_ADAPTER_HANDLE Adapter, _In_ LPARAM Param)
+{
+    struct delete_wintun_adapter_params *params = (struct delete_wintun_adapter_params *)Param;
+    GUID guid;
+
+    get_wintun_adapter_guid(Adapter, &guid);
+    if (memcmp(&guid, params->pguidAdapterID, sizeof(GUID)) == 0
+        && WintunDeleteAdapter(Adapter, TRUE, params->pbRebootRequired))
+    {
+        *params->piResult = 0;
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+
 /**
  * Program entry point
  */
@@ -179,6 +229,8 @@ _tmain(int argc, LPCTSTR argv[])
     {
         LPCTSTR szName = NULL;
         LPCTSTR szHwId = TEXT("root\\") TEXT(TAP_WIN_COMPONENT_ID);
+        GUID guidAdapter;
+        LPOLESTR szAdapterId = NULL;
 
         /* Parse options. */
         for (int i = 2; i < argc; i++)
@@ -187,8 +239,7 @@ _tmain(int argc, LPCTSTR argv[])
             {
                 szName = argv[++i];
             }
-            else
-            if (_tcsicmp(argv[i], TEXT("--hwid")) == 0)
+            else if (_tcsicmp(argv[i], TEXT("--hwid")) == 0)
             {
                 szHwId = argv[++i];
             }
@@ -198,9 +249,27 @@ _tmain(int argc, LPCTSTR argv[])
             }
         }
 
+        if (_tcsicmp(szHwId, TEXT("Wintun")) == 0)
+        {
+            /* Wintun has its own API for creating adapters. */
+            WINTUN_ADAPTER_HANDLE hAdapter;
+
+            /* Wintun adapter requires a name. */
+            if (szName == NULL)
+            {
+                szName = TEXT(PACKAGE_NAME);
+            }
+
+            if (init_wintun() != ERROR_SUCCESS
+                || (hAdapter = WintunCreateAdapter(WINTUN_POOL, szName, NULL, &bRebootRequired)) == NULL)
+            {
+                iResult = 1; goto quit;
+            }
+            get_wintun_adapter_guid(hAdapter, &guidAdapter);
+            goto output_adapter_id;
+        }
+
         /* Create TUN/TAP adapter. */
-        GUID guidAdapter;
-        LPOLESTR szAdapterId = NULL;
         DWORD dwResult = tap_create_adapter(
             NULL,
             TEXT("Virtual Ethernet"),
@@ -257,6 +326,7 @@ create_cleanup_pAdapterList:
         }
 
         /* Output adapter GUID. */
+output_adapter_id:
         StringFromIID((REFIID)&guidAdapter, &szAdapterId);
         _ftprintf(stdout, TEXT("%") TEXT(PRIsLPOLESTR) TEXT("\n"), szAdapterId);
         CoTaskMemFree(szAdapterId);
@@ -292,6 +362,17 @@ create_delete_adapter:
             }
         }
 
+        if (_tcsicmp(szzHwId, TEXT("Wintun")) == 0)
+        {
+            /* Wintun has its own API for enumerating adapters. */
+            if (init_wintun() != ERROR_SUCCESS
+                || !WintunEnumAdapters(WINTUN_POOL, print_wintun_adapter, 0))
+            {
+                iResult = 1; goto quit;
+            }
+            iResult = 0; goto quit;
+        }
+
         /* Output list of adapters with given hardware ID. */
         struct tap_adapter_node *pAdapterList = NULL;
         DWORD dwResult = tap_list_adapters(NULL, szzHwId, &pAdapterList);
@@ -318,6 +399,43 @@ create_delete_adapter:
         {
             _ftprintf(stderr, TEXT("Missing adapter GUID or name. Please, use \"tapctl help delete\" for usage info.\n"));
             return 1;
+        }
+
+        /* Wintun has its own API for deleting adapters. Try it first. */
+        if (init_wintun() == ERROR_SUCCESS)
+        {
+            GUID guidAdapter;
+
+            iResult = 1;
+            if (FAILED(IIDFromString(argv[2], (LPIID)&guidAdapter)))
+            {
+                /* The argument failed to covert to GUID. Treat it as the adapter name. */
+                WINTUN_ADAPTER_HANDLE hAdapter;
+                if ((hAdapter = WintunOpenAdapter(WINTUN_POOL, argv[2])) != NULL)
+                {
+                    if (WintunDeleteAdapter(hAdapter, TRUE, &bRebootRequired))
+                    {
+                        iResult = 0;
+                    }
+                    WintunFreeAdapter(hAdapter);
+                }
+            }
+            else
+            {
+                /* Traverse our Wintun adapters and delete first one that matches the ID. */
+                struct delete_wintun_adapter_params params =
+                {
+                    .pguidAdapterID = &guidAdapter,
+                    .pbRebootRequired = &bRebootRequired,
+                    .piResult = &iResult
+                };
+
+                WintunEnumAdapters(WINTUN_POOL, delete_wintun_adapter, (LPARAM)&params);
+            }
+            if (iResult == 0)
+            {
+                goto quit;
+            }
         }
 
         GUID guidAdapter;

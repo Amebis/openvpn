@@ -53,6 +53,7 @@
 #include "tls_crypt.h"
 #include "forward.h"
 #include "auth_token.h"
+#include "wintun_hlp.h"
 
 #include "memdbg.h"
 
@@ -805,6 +806,7 @@ init_static(void)
 
 #ifdef _WIN32
     init_win32();
+    init_wintun();
 #endif
 
 #ifdef OPENVPN_DEBUG_COMMAND_LINE
@@ -1848,7 +1850,8 @@ do_open_tun(struct context *c)
     {
         /* guess actual tun/tap unit number that will be returned
          * by open_tun */
-        const char *guess = guess_tuntap_dev(c->options.dev,
+        const char *guess = guess_tuntap_dev(c->c1.tuntap,
+                                             c->options.dev,
                                              c->options.dev_type,
                                              c->options.dev_node,
                                              &gc);
