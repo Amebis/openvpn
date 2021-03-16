@@ -23,6 +23,7 @@ AM_CPPFLAGS = \
 if WIN32
 sbin_PROGRAMS = openvpnserv
 openvpnserv_CFLAGS = \
+	$(TAP_CFLAGS) \
 	-municode -D_UNICODE \
 	-UNTDDI_VERSION -U_WIN32_WINNT \
 	-D_WIN32_WINNT=_WIN32_WINNT_VISTA
@@ -30,10 +31,12 @@ openvpnserv_LDADD = -ladvapi32 -luserenv -liphlpapi -lfwpuclnt -lrpcrt4 -lshlwap
 endif
 
 openvpnserv_SOURCES = \
-        common.c \
+	common.c \
 	interactive.c \
+	error.c \
 	service.c service.h \
 	validate.c validate.h \
 	$(top_srcdir)/src/openvpn/block_dns.c $(top_srcdir)/src/openvpn/block_dns.h \
 	openvpnserv_resources.rc \
-	$(top_srcdir)/src/openvpn/ring_buffer.h
+	$(top_srcdir)/src/openvpn/ring_buffer.h \
+	$(top_srcdir)/src/openvpn/wintun_hlp.c $(top_srcdir)/src/openvpn/wintun_hlp.h

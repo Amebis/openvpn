@@ -670,6 +670,7 @@ AC_CHECK_HEADERS(
 		net/if_tun.h net/tun/if_tun.h \
 		linux/if_tun.h \
 		tap-windows.h \
+		wintun.h \
 	],
 	[have_tap_header="yes"]
 )

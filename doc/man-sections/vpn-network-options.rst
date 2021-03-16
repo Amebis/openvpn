@@ -93,6 +93,10 @@ routing.
   both the network connections control panel name and the GUID for each
   TAP-Win32 adapter.
 
+  On Windows systems with ``--windows-driver wintun``, an adapter with
+  name ``node`` is created on demand. When ``node`` is a raw adapter GUID,
+  an adapter with this GUID and name ``OpenVPN Wintun`` is created.
+
 --dev-type device-type
   Which device type are we using? ``device-type`` should be :code:`tun`
   (OSI Layer 3) or :code:`tap` (OSI Layer 2). Use this option only if

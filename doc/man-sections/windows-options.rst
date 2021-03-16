@@ -242,3 +242,6 @@ Windows-Specific Options
   (default) and :code:`wintun`.  This is a Windows-only option.
   :code:`wintun`" requires ``--dev tun`` and the OpenVPN process to run
   elevated, or be invoked using the Interactive Service.
+
+  The ``--windows-driver wintun`` creates a tun adapter at runtime if
+  none available. Use ``--dev-node`` to control the adapter name or GUID.

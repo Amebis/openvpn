@@ -34,6 +34,7 @@
 #include "multi.h"
 #include "win32.h"
 #include "platform.h"
+#include "wintun_hlp.h"
 
 #include "memdbg.h"
 
@@ -212,6 +213,10 @@ openvpn_main(int argc, char *argv[])
             {
                 break;
             }
+
+#ifdef _WIN32
+            init_wintun(TEXT("wintun.dll"), NULL);
+#endif
 
             /* tun/tap persist command? */
             if (do_persist_tuntap(&c.options, &c.net_ctx))

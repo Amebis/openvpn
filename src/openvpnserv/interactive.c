@@ -44,6 +44,7 @@
 #include "validate.h"
 #include "block_dns.h"
 #include "ring_buffer.h"
+#include "wintun_hlp.h"
 
 #define IO_TIMEOUT  2000 /*ms*/
 
@@ -1349,6 +1350,111 @@ DuplicateAndMapRing(HANDLE ovpn_proc, HANDLE orig_handle, HANDLE *new_handle, st
     return err;
 }
 
+typedef struct
+{
+    DWORD count, capacity;
+    GUID *adapter_ids;
+} add_wintun_adapter_param_t;
+
+static BOOL CALLBACK
+add_wintun_adapter(_In_ WINTUN_ADAPTER_HANDLE adapter, _In_ LPARAM param)
+{
+    add_wintun_adapter_param_t *p = (add_wintun_adapter_param_t *)param;
+    DWORD final_count = p->count + 1;
+
+    if (final_count > MAXDWORD / sizeof(GUID))
+    {
+        MsgToEventLog(M_INFO, TEXT("Truncating excessive adapters"));
+        return FALSE;
+    }
+    if (final_count > p->capacity)
+    {
+        const DWORD step = 16;
+        GUID *buf = realloc(p->adapter_ids, sizeof(GUID) * (p->capacity + step));
+        if (!buf)
+        {
+            MsgToEventLog(M_SYSERR, TEXT("Error allocating memory"));
+            return FALSE;
+        }
+        p->adapter_ids = buf;
+        p->capacity += step;
+    }
+    get_wintun_adapter_guid(adapter, &p->adapter_ids[p->count]);
+    p->count = final_count;
+
+    return TRUE;
+}
+
+static DWORD
+HandleEnumWintunAdapters(DWORD *trailing_size, void **trailing_data)
+{
+    add_wintun_adapter_param_t p = { 0 };
+
+    if (is_wintun_initialized())
+    {
+        WintunEnumAdapters(WINTUN_POOL, add_wintun_adapter, (LPARAM)&p);
+    }
+
+    *trailing_size = sizeof(GUID) * p.count;
+    *trailing_data = p.adapter_ids;
+    return ERROR_SUCCESS;
+}
+
+static DWORD
+HandleCreateWintunAdapter(const create_wintun_adapter_message_t *msg, DWORD *trailing_size, void **trailing_data)
+{
+    static const GUID blank_guid = { 0 };
+    DWORD err;
+    WINTUN_ADAPTER_HANDLE adapter;
+    create_wintun_adapter_trailing_t *t;
+
+    if (!is_wintun_initialized())
+    {
+        MsgToEventLog(M_SYSERR, TEXT("Wintun not initialized"));
+        return ERROR_INVALID_FUNCTION;
+    }
+
+    t = calloc(1, sizeof(*t));
+    if (!t)
+    {
+        MsgToEventLog(M_SYSERR, TEXT("Error allocating memory"));
+        return ERROR_NOT_ENOUGH_MEMORY;
+    }
+
+    adapter = WintunCreateAdapter(
+        WINTUN_POOL,
+        msg->requested_name,
+        memcmp(&msg->requested_adapter_id, &blank_guid, sizeof(GUID)) != 0 ? &msg->requested_adapter_id : NULL,
+        &t->reboot_required);
+    if (adapter == NULL)
+    {
+        err = GetLastError();
+        MsgToEventLog(M_SYSERR | MSG_FLAGS_SYS_CODE, TEXT("Failed to create Wintun adapter"));
+        goto cleanup_t;
+    }
+
+    get_wintun_adapter_guid(adapter, &t->received_adapter_id);
+    if (!WintunGetAdapterName(adapter, t->received_name))
+    {
+        err = GetLastError();
+        MsgToEventLog(M_SYSERR | MSG_FLAGS_SYS_CODE, TEXT("Failed to get Wintun adapter name"));
+        goto cleanup_adapter;
+    }
+
+    *trailing_size = sizeof(*t);
+    *trailing_data = t;
+    err = ERROR_SUCCESS;
+
+cleanup_adapter:
+    WintunFreeAdapter(adapter);
+cleanup_t:
+    if (err != ERROR_SUCCESS)
+    {
+        free(t);
+    }
+    return err;
+}
+
 static DWORD
 HandleRegisterRingBuffers(const register_ring_buffers_message_t *rrb, HANDLE ovpn_proc,
                           ring_buffer_handles_t *ring_buffer_handles)
@@ -1356,8 +1462,6 @@ HandleRegisterRingBuffers(const register_ring_buffers_message_t *rrb, HANDLE ovp
     DWORD err = 0;
     struct tun_ring *send_ring;
     struct tun_ring *receive_ring;
-
-    CloseRingBufferHandles(ring_buffer_handles);
 
     err = OvpnDuplicateHandle(ovpn_proc, rrb->device, &ring_buffer_handles->device);
     if (err != ERROR_SUCCESS)
@@ -1435,6 +1539,7 @@ HandleMessage(HANDLE pipe, HANDLE ovpn_proc, ring_buffer_handles_t *ring_buffer_
         block_dns_message_t block_dns;
         dns_cfg_message_t dns;
         enable_dhcp_message_t dhcp;
+        create_wintun_adapter_message_t cwa;
         register_ring_buffers_message_t rrb;
         set_mtu_message_t mtu;
     } msg;
@@ -1506,11 +1611,27 @@ HandleMessage(HANDLE pipe, HANDLE ovpn_proc, ring_buffer_handles_t *ring_buffer_
             }
             break;
 
+        case msg_enum_wintun_adapters:
+            ack.error_number = HandleEnumWintunAdapters(&ack.trailing_size, &trailing_data);
+            break;
+
+        case msg_create_wintun_adapter:
+            if (msg.header.size == sizeof(msg.cwa))
+            {
+                ack.error_number = HandleCreateWintunAdapter(&msg.cwa, &ack.trailing_size, &trailing_data);
+            }
+            break;
+
         case msg_register_ring_buffers:
             if (msg.header.size == sizeof(msg.rrb))
             {
                 ack.error_number = HandleRegisterRingBuffers(&msg.rrb, ovpn_proc, ring_buffer_handles);
             }
+            break;
+
+        case msg_unregister_ring_buffers:
+            CloseRingBufferHandles(ring_buffer_handles);
+            ack.error_number = ERROR_SUCCESS;
             break;
 
         case msg_set_mtu:
@@ -2104,6 +2225,8 @@ ServiceStartInteractive(DWORD dwArgc, LPTSTR *lpszArgv)
     status.dwWin32ExitCode = NO_ERROR;
     status.dwWaitHint = 3000;
     ReportStatusToSCMgr(service, &status);
+
+    init_wintun(TEXT("wintun.dll"), service_instance);
 
     /* Read info from registry in key HKLM\SOFTWARE\OpenVPN */
     error = GetOpenvpnSettings(&settings);
