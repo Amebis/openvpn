@@ -624,6 +624,7 @@ struct options
     HANDLE msg_channel;
     const char *exit_event_name;
     bool exit_event_initial_state;
+    const char *service_instance;
     bool show_net_up;
     int route_method;
     bool block_outside_dns;

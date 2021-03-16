@@ -2,7 +2,7 @@
 #  tapctl -- Utility to manipulate TUN/TAP interfaces on Windows
 #
 #  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
-#  Copyright (C) 2018 Simon Rozman <simon@rozman.si>
+#  Copyright (C) 2018-2021 Simon Rozman <simon@rozman.si>
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License version 2
@@ -31,12 +31,10 @@ EXTRA_DIST = \
 AM_CPPFLAGS = \
 	-I$(top_srcdir)/include -I$(top_srcdir)/src/compat
 
-AM_CFLAGS = \
-	$(TAP_CFLAGS)
-
 if WIN32
 sbin_PROGRAMS = tapctl
 tapctl_CFLAGS = \
+	$(TAP_CFLAGS) \
 	-municode -D_UNICODE \
 	-UNTDDI_VERSION -U_WIN32_WINNT \
 	-D_WIN32_WINNT=_WIN32_WINNT_VISTA
@@ -48,4 +46,5 @@ tapctl_SOURCES = \
 	error.c error.h \
 	main.c \
 	tap.c tap.h \
-	tapctl_resources.rc
+	tapctl_resources.rc \
+	$(top_srcdir)/src/openvpn/wintun_hlp.c $(top_srcdir)/src/openvpn/wintun_hlp.h

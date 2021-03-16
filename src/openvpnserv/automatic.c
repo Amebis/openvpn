@@ -291,7 +291,7 @@ ServiceStartAutomatic(DWORD dwArgc, LPTSTR *lpszArgv)
             struct security_attributes sa;
             TCHAR log_file[MAX_PATH];
             TCHAR log_path[MAX_PATH];
-            TCHAR command_line[256];
+            TCHAR command_line[512];
 
             CLEAR(start_info);
             CLEAR(proc_info);
@@ -318,7 +318,8 @@ ServiceStartAutomatic(DWORD dwArgc, LPTSTR *lpszArgv)
                                   TEXT("%s\\%s"), settings.log_dir, log_file);
 
                 /* construct command line */
-                openvpn_sntprintf(command_line, _countof(command_line), TEXT("openvpn --service \"" PACKAGE "%s_exit_1\" 1 --config \"%s\""),
+                openvpn_sntprintf(command_line, _countof(command_line), TEXT("openvpn --service \"" PACKAGE "%s_exit_1\" 1 \"%s\" --config \"%s\""),
+                                  service_instance,
                                   service_instance,
                                   find_obj.cFileName);
 

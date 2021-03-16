@@ -2,7 +2,7 @@
  *  openvpnmsica -- Custom Action DLL to provide OpenVPN-specific support to MSI packages
  *                  https://community.openvpn.net/openvpn/wiki/OpenVPNMSICA
  *
- *  Copyright (C) 2018-2020 Simon Rozman <simon@rozman.si>
+ *  Copyright (C) 2018-2021 Simon Rozman <simon@rozman.si>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -32,6 +32,7 @@
 #include "../tapctl/basic.h"
 #include "../tapctl/error.h"
 #include "../tapctl/tap.h"
+#include "../openvpn/wintun_hlp.h"
 
 #include <windows.h>
 #include <iphlpapi.h>
@@ -58,6 +59,8 @@
  */
 
 #define MSICA_ADAPTER_TICK_SIZE (16*1024) /** Amount of tick space to reserve for one TAP/TUN adapter creation/deletition. */
+#define WINTUN_COMPONENT        TEXT("bin.wintun.dll")
+#define WINTUN_DIRECTORY        TEXT("BINDIR")
 
 
 /**
@@ -746,13 +749,15 @@ EvaluateTUNTAPAdapters(_In_ MSIHANDLE hInstall)
         seqInstallRollback,
         seqUninstall,
         seqUninstallCommit,
-        seqUninstallRollback;
+        seqUninstallRollback,
+        seqDeleteWintunPool;
     msica_arg_seq_init(&seqInstall);
     msica_arg_seq_init(&seqInstallCommit);
     msica_arg_seq_init(&seqInstallRollback);
     msica_arg_seq_init(&seqUninstall);
     msica_arg_seq_init(&seqUninstallCommit);
     msica_arg_seq_init(&seqUninstallRollback);
+    msica_arg_seq_init(&seqDeleteWintunPool);
 
     /* Check rollback state. */
     bool bRollbackEnabled = MsiEvaluateCondition(hInstall, TEXT("RollbackDisabled")) != MSICONDITION_TRUE;
@@ -956,13 +961,73 @@ cleanup_hRecord:
         }
     }
 
+    {
+        /* Get the wintun.dll component state. */
+        INSTALLSTATE iInstalled, iAction;
+        uiResult = MsiGetComponentState(hInstall, WINTUN_COMPONENT, &iInstalled, &iAction);
+        if (uiResult != ERROR_SUCCESS)
+        {
+            SetLastError(uiResult); /* MSDN does not mention MsiGetComponentState() to set GetLastError(). But we do have an error code. Set last error manually. */
+            msg(M_NONFATAL | M_ERRNO, "%s: MsiGetComponentState(\"%" PRIsLPTSTR "\") failed", __FUNCTION__, WINTUN_COMPONENT);
+            goto cleanup_hRecordProg;
+        }
+
+        while (iInstalled >= INSTALLSTATE_LOCAL && iAction > INSTALLSTATE_BROKEN && iAction < INSTALLSTATE_LOCAL)
+        {
+            /* Wintun is installed, but should be degraded to advertised/removed. Schedule Wintun adapter pool deletition.
+             *
+             * Note: On adapter removal (product is being uninstalled), we skip on errors.
+             * Better a partial uninstallation than no uninstallation at all.
+             */
+
+            /* Determine installed wintun.dll path and schedule pool deletion. */
+            LPTSTR szDeleteWintunPool;
+            MSIHANDLE hRecordDeleteWintunPool = MsiCreateRecord(1);
+            if (!hRecordDeleteWintunPool)
+            {
+                uiResult = ERROR_INVALID_HANDLE;
+                msg(M_NONFATAL, "%s: MsiCreateRecord failed", __FUNCTION__);
+                break;
+            }
+            uiResult = MsiRecordSetString(hRecordDeleteWintunPool, 0, TEXT("\"deleteWintunPool=[") WINTUN_DIRECTORY TEXT("]wintun.dll\""));
+            if (uiResult != ERROR_SUCCESS)
+            {
+                SetLastError(uiResult); /* MSDN does not mention MsiRecordSetString() to set GetLastError(). But we do have an error code. Set last error manually. */
+                msg(M_NONFATAL | M_ERRNO, "%s: MsiRecordSetString failed", __FUNCTION__);
+                goto cleanup_hRecordDeleteWintunPool;
+            }
+            uiResult = msi_format_record(hInstall, hRecordDeleteWintunPool, &szDeleteWintunPool);
+            if (uiResult != ERROR_SUCCESS)
+            {
+                goto cleanup_hRecordDeleteWintunPool;
+            }
+            msica_arg_seq_add_tail(&seqDeleteWintunPool, szDeleteWintunPool);
+            free(szDeleteWintunPool);
+cleanup_hRecordDeleteWintunPool:
+            MsiCloseHandle(hRecordDeleteWintunPool);
+            if (uiResult == ERROR_SUCCESS)
+            {
+                /* Arrange the amount of tick space to add to the progress indicator. */
+                MsiRecordSetInteger(hRecordProg, 1, 3 /* OP3 = Add ticks to the expected total number of progress of the progress bar */);
+                MsiRecordSetInteger(hRecordProg, 2, MSICA_ADAPTER_TICK_SIZE);
+                if (MsiProcessMessage(hInstall, INSTALLMESSAGE_PROGRESS, hRecordProg) == IDCANCEL)
+                {
+                    uiResult = ERROR_INSTALL_USEREXIT;
+                    goto cleanup_hRecordProg;
+                }
+            }
+            break;
+        }
+    }
+
     /* Store deferred custom action parameters. */
     if ((uiResult = setup_sequence(hInstall, TEXT("InstallTUNTAPAdapters"          ), &seqInstall          )) != ERROR_SUCCESS
         || (uiResult = setup_sequence(hInstall, TEXT("InstallTUNTAPAdaptersCommit"    ), &seqInstallCommit    )) != ERROR_SUCCESS
         || (uiResult = setup_sequence(hInstall, TEXT("InstallTUNTAPAdaptersRollback"  ), &seqInstallRollback  )) != ERROR_SUCCESS
         || (uiResult = setup_sequence(hInstall, TEXT("UninstallTUNTAPAdapters"        ), &seqUninstall        )) != ERROR_SUCCESS
         || (uiResult = setup_sequence(hInstall, TEXT("UninstallTUNTAPAdaptersCommit"  ), &seqUninstallCommit  )) != ERROR_SUCCESS
-        || (uiResult = setup_sequence(hInstall, TEXT("UninstallTUNTAPAdaptersRollback"), &seqUninstallRollback)) != ERROR_SUCCESS)
+        || (uiResult = setup_sequence(hInstall, TEXT("UninstallTUNTAPAdaptersRollback"), &seqUninstallRollback)) != ERROR_SUCCESS
+        || (uiResult = setup_sequence(hInstall, TEXT("DeleteWintunPool"               ), &seqDeleteWintunPool )) != ERROR_SUCCESS)
     {
         goto cleanup_hRecordProg;
     }
@@ -984,6 +1049,7 @@ cleanup_exec_seq:
     msica_arg_seq_free(&seqUninstall);
     msica_arg_seq_free(&seqUninstallCommit);
     msica_arg_seq_free(&seqUninstallRollback);
+    msica_arg_seq_free(&seqDeleteWintunPool);
     if (bIsCoInitialized)
     {
         CoUninitialize();
@@ -1147,6 +1213,15 @@ ProcessDeferredAction(_In_ MSIHANDLE hInstall)
                 goto invalid_argument;
             }
             dwResult = tap_delete_adapter(NULL, &guid, &bRebootRequired);
+        }
+        else if (wcsncmp(szArg[i], L"deleteWintunPool=", 17) == 0)
+        {
+            /* Delete Wintun adapter pool and uninstall Wintun driver. */
+            if (init_wintun(szArg[i] + 17, TEXT("")) == ERROR_SUCCESS)
+            {
+                WintunDeletePoolDriver(WINTUN_POOL, &bRebootRequired);
+            }
+            dwResult = ERROR_SUCCESS;
         }
         else if (wcsncmp(szArg[i], L"enable=", 7) == 0)
         {

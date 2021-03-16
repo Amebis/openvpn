@@ -47,6 +47,7 @@
 #include "win32.h"
 #include "block_dns.h"
 #include "networking.h"
+#include "wintun_hlp.h"
 
 #include "memdbg.h"
 
@@ -83,7 +84,7 @@ static void netsh_set_dns6_servers(const struct in6_addr *addr_list,
 
 static void netsh_command(const struct argv *a, int n, int msglevel);
 
-static const char *netsh_get_id(const char *dev_node, struct gc_arena *gc);
+static const char *netsh_get_id(struct tuntap *tt, const char *dev_node, struct gc_arena *gc);
 
 static DWORD get_adapter_index_flexible(const char *name);
 
@@ -405,7 +406,8 @@ dev_type_string(const char *dev, const char *dev_type)
  * before the device is actually opened.
  */
 const char *
-guess_tuntap_dev(const char *dev,
+guess_tuntap_dev(struct tuntap *tt,
+                 const char *dev,
                  const char *dev_type,
                  const char *dev_node,
                  struct gc_arena *gc)
@@ -414,7 +416,7 @@ guess_tuntap_dev(const char *dev,
     const int dt = dev_type_enum(dev, dev_type);
     if (dt == DEV_TYPE_TUN || dt == DEV_TYPE_TAP)
     {
-        return netsh_get_id(dev_node, gc);
+        return netsh_get_id(tt, dev_node, gc);
     }
 #endif
 
@@ -3760,7 +3762,7 @@ next:
 }
 
 static const struct tap_reg *
-get_tap_reg(struct gc_arena *gc)
+get_tap_win_reg(struct gc_arena *gc)
 {
     HKEY adapter_key;
     LONG status;
@@ -3856,23 +3858,12 @@ get_tap_reg(struct gc_arena *gc)
                 if (status == ERROR_SUCCESS && data_type == REG_SZ)
                 {
                     /* Is this adapter supported? */
-                    enum windows_driver_type windows_driver = WINDOWS_DRIVER_UNSPECIFIED;
                     if (strcasecmp(component_id, TAP_WIN_COMPONENT_ID) == 0
                         || strcasecmp(component_id, "root\\" TAP_WIN_COMPONENT_ID) == 0)
-                    {
-                        windows_driver = WINDOWS_DRIVER_TAP_WINDOWS6;
-                    }
-                    else if (strcasecmp(component_id, WINTUN_COMPONENT_ID) == 0)
-                    {
-                        windows_driver = WINDOWS_DRIVER_WINTUN;
-                    }
-
-                    if (windows_driver != WINDOWS_DRIVER_UNSPECIFIED)
                     {
                         struct tap_reg *reg;
                         ALLOC_OBJ_CLEAR_GC(reg, struct tap_reg, gc);
                         reg->guid = string_alloc(net_cfg_instance_id, gc);
-                        reg->windows_driver = windows_driver;
 
                         /* link into return list */
                         if (!first)
@@ -3893,6 +3884,97 @@ get_tap_reg(struct gc_arena *gc)
     }
 
     RegCloseKey(adapter_key);
+    return first;
+}
+
+static void
+add_wintun_adapter_to_list(
+    const GUID *guid,
+    struct tap_reg **first,
+    struct tap_reg **last,
+    struct gc_arena *gc)
+{
+    char adapter_id[64];
+    struct tap_reg *reg;
+
+    openvpn_snprintf(adapter_id, sizeof(adapter_id), PRIXGUID, PRIGUID_PARAM(*guid));
+    ALLOC_OBJ_CLEAR_GC(reg, struct tap_reg, gc);
+    reg->guid = string_alloc(adapter_id, gc);
+
+    /* link into return list */
+    if (!*first)
+    {
+        *first = reg;
+    }
+    if (*last)
+    {
+        (*last)->next = reg;
+    }
+    *last = reg;
+}
+
+struct add_wintun_adapter_param
+{
+    struct gc_arena *gc;
+    struct tap_reg **first;
+    struct tap_reg **last;
+};
+
+static BOOL CALLBACK
+add_wintun_adapter(_In_ WINTUN_ADAPTER_HANDLE adapter, _In_ LPARAM param)
+{
+    struct add_wintun_adapter_param *p = (struct add_wintun_adapter_param *)param;
+    GUID guid;
+    get_wintun_adapter_guid(adapter, &guid);
+    add_wintun_adapter_to_list(&guid, p->first, p->last, p->gc);
+    return TRUE;
+}
+
+static const struct tap_reg *
+get_wintun_reg(struct tuntap *tt, struct gc_arena *gc)
+{
+    struct tap_reg *first = NULL;
+    struct tap_reg *last = NULL;
+
+    if (tt->options.msg_channel)
+    {
+        message_header_t msg = {
+            msg_enum_wintun_adapters,
+            sizeof(message_header_t),
+            0
+        };
+        ack_message_t ack;
+        GUID *trailing = NULL;
+
+        if (send_msg_iservice(tt->options.msg_channel, &msg, sizeof(msg), &ack, "Enum wintun adapters", (void **)&trailing, gc))
+        {
+            if (ack.error_number == NO_ERROR)
+            {
+                for (size_t i = 0, n = ack.trailing_size / sizeof(GUID); i < n; ++i)
+                {
+                    add_wintun_adapter_to_list(&trailing[i], &first, &last, gc);
+                }
+            }
+            else
+            {
+                msg(M_NONFATAL, "Creating Wintun adapter failed using service: %s [status=0x%x]",
+                    strerror_win32(ack.error_number, gc), ack.error_number);
+            }
+        }
+    }
+    else
+    {
+        if (is_wintun_initialized())
+        {
+            struct add_wintun_adapter_param param = {
+                .gc = gc,
+                .first = &first,
+                .last = &last
+            };
+            WintunEnumAdapters(WINTUN_POOL, add_wintun_adapter, (LPARAM)&param);
+        }
+    }
+
     return first;
 }
 
@@ -4100,10 +4182,10 @@ show_tap_win_adapters(int msglev, int warnlev)
     const struct tap_reg *tr1;
     const struct panel_reg *pr;
 
-    const struct tap_reg *tap_reg = get_tap_reg(&gc);
+    const struct tap_reg *tap_reg = get_tap_win_reg(&gc);
     const struct panel_reg *panel_reg = get_panel_reg(&gc);
 
-    msg(msglev, "Available TAP-WIN32 / Wintun adapters [name, GUID, driver]:");
+    msg(msglev, "Available TAP-WIN32 adapters [name, GUID]:");
 
     /* loop through each TAP-Windows adapter registry entry */
     for (tr = tap_reg; tr != NULL; tr = tr->next)
@@ -4115,7 +4197,7 @@ show_tap_win_adapters(int msglev, int warnlev)
         {
             if (!strcmp(tr->guid, pr->guid))
             {
-                msg(msglev, "'%s' %s %s", pr->name, tr->guid, print_windows_driver(tr->windows_driver));
+                msg(msglev, "'%s' %s", pr->name, tr->guid);
                 ++links;
             }
         }
@@ -4220,7 +4302,7 @@ at_least_one_tap_win(const struct tap_reg *tap_reg)
 {
     if (!tap_reg)
     {
-        msg(M_FATAL, "There are no TAP-Windows nor Wintun adapters on this system.  You should be able to create an adapter by using tapctl.exe utility.");
+        msg(M_FATAL, "There are no TAP-Windows adapters on this system.  You should be able to create an adapter by using tapctl.exe utility.");
     }
 }
 
@@ -4234,7 +4316,6 @@ get_unspecified_device_guid(const int device_number,
                             int actual_name_size,
                             const struct tap_reg *tap_reg_src,
                             const struct panel_reg *panel_reg_src,
-                            enum windows_driver_type *windows_driver,
                             struct gc_arena *gc)
 {
     const struct tap_reg *tap_reg = tap_reg_src;
@@ -4284,10 +4365,6 @@ get_unspecified_device_guid(const int device_number,
     /* Save GUID for return value */
     ret = alloc_buf_gc(256, gc);
     buf_printf(&ret, "%s", tap_reg->guid);
-    if (windows_driver != NULL)
-    {
-        *windows_driver = tap_reg->windows_driver;
-    }
     return BSTR(&ret);
 }
 
@@ -4299,7 +4376,6 @@ static const char *
 get_device_guid(const char *name,
                 char *actual_name,
                 int actual_name_size,
-                enum windows_driver_type *windows_driver,
                 const struct tap_reg *tap_reg,
                 const struct panel_reg *panel_reg,
                 struct gc_arena *gc)
@@ -4335,10 +4411,6 @@ get_device_guid(const char *name,
         {
             buf_printf(&actual, "%s", name);
         }
-        if (windows_driver)
-        {
-            *windows_driver = tr->windows_driver;
-        }
         return BSTR(&ret);
     }
 
@@ -4348,10 +4420,6 @@ get_device_guid(const char *name,
         if (tr)
         {
             buf_printf(&actual, "%s", name);
-            if (windows_driver)
-            {
-                *windows_driver = tr->windows_driver;
-            }
             buf_printf(&ret, "%s", tr->guid);
             return BSTR(&ret);
         }
@@ -5024,7 +5092,7 @@ void
 tap_allow_nonadmin_access(const char *dev_node)
 {
     struct gc_arena gc = gc_new();
-    const struct tap_reg *tap_reg = get_tap_reg(&gc);
+    const struct tap_reg *tap_reg = get_tap_win_reg(&gc);
     const struct panel_reg *panel_reg = get_panel_reg(&gc);
     const char *device_guid = NULL;
     HANDLE hand;
@@ -5036,7 +5104,7 @@ tap_allow_nonadmin_access(const char *dev_node)
     if (dev_node)
     {
         /* Get the device GUID for the device specified with --dev-node. */
-        device_guid = get_device_guid(dev_node, actual_buffer, sizeof(actual_buffer), NULL, tap_reg, panel_reg, &gc);
+        device_guid = get_device_guid(dev_node, actual_buffer, sizeof(actual_buffer), tap_reg, panel_reg, &gc);
 
         if (!device_guid)
         {
@@ -5079,7 +5147,6 @@ tap_allow_nonadmin_access(const char *dev_node)
                                                       sizeof(actual_buffer),
                                                       tap_reg,
                                                       panel_reg,
-                                                      NULL,
                                                       &gc);
 
             if (!device_guid)
@@ -5651,24 +5718,32 @@ windows_set_mtu(const int iface_index, const short family,
  * Return a TAP name for netsh commands.
  */
 static const char *
-netsh_get_id(const char *dev_node, struct gc_arena *gc)
+netsh_get_id(struct tuntap *tt, const char *dev_node, struct gc_arena *gc)
 {
-    const struct tap_reg *tap_reg = get_tap_reg(gc);
+    const struct tap_reg *tap_reg;
     const struct panel_reg *panel_reg = get_panel_reg(gc);
     struct buffer actual = alloc_buf_gc(256, gc);
     const char *guid;
 
-    at_least_one_tap_win(tap_reg);
-
-    if (dev_node)
+    if (tt->windows_driver == WINDOWS_DRIVER_WINTUN)
     {
-        guid = get_device_guid(dev_node, BPTR(&actual), BCAP(&actual), NULL, tap_reg, panel_reg, gc);
+        tap_reg = get_wintun_reg(tt, gc);
     }
     else
     {
-        guid = get_unspecified_device_guid(0, BPTR(&actual), BCAP(&actual), tap_reg, panel_reg, NULL, gc);
+        tap_reg = get_tap_win_reg(gc);
+        at_least_one_tap_win(tap_reg);
+    }
 
-        if (get_unspecified_device_guid(1, NULL, 0, tap_reg, panel_reg, NULL, gc)) /* ambiguous if more than one TAP-Windows adapter */
+    if (dev_node)
+    {
+        guid = get_device_guid(dev_node, BPTR(&actual), BCAP(&actual), tap_reg, panel_reg, gc);
+    }
+    else
+    {
+        guid = get_unspecified_device_guid(0, BPTR(&actual), BCAP(&actual), tap_reg, panel_reg, gc);
+
+        if (get_unspecified_device_guid(1, NULL, 0, tap_reg, panel_reg, gc)) /* ambiguous if more than one TAP-Windows adapter */
         {
             guid = NULL;
         }
@@ -5965,6 +6040,75 @@ register_dns_service(const struct tuntap *tt)
 }
 
 static bool
+service_create_wintun_adapter(
+    const struct tuntap *tt,
+    const char *requested_name,
+    const GUID *requested_adapter_id,
+    const char **device_guid,
+    uint8_t *actual_name,
+    int actual_name_size,
+    struct gc_arena *gc)
+{
+    HANDLE msg_channel = tt->options.msg_channel;
+    ack_message_t ack;
+    create_wintun_adapter_trailing_t *trailing = NULL;
+
+    create_wintun_adapter_message_t msg = {
+        .header = {
+            msg_create_wintun_adapter,
+            sizeof(create_wintun_adapter_message_t),
+            0
+        }
+    };
+    wcsncpy(msg.requested_name, wide_string(requested_name, gc), _countof(msg.requested_name));
+    if (requested_adapter_id != NULL)
+    {
+        memcpy(&msg.requested_adapter_id, requested_adapter_id, sizeof(GUID));
+    }
+
+    if (!send_msg_iservice(msg_channel, &msg, sizeof(msg), &ack, "Create wintun adapter", (void **)&trailing, gc))
+    {
+        return false;
+    }
+    if (ack.error_number != NO_ERROR)
+    {
+        msg(M_NONFATAL, "Creating Wintun adapter failed using service: %s [status=0x%x]",
+            strerror_win32(ack.error_number, gc), ack.error_number);
+        return false;
+    }
+    if (ack.trailing_size < sizeof(*trailing))
+    {
+        msg(M_NONFATAL, "Creating Wintun adapter returned an unexpected response: [size=%u]",
+            ack.trailing_size);
+        return false;
+    }
+
+    msg(M_INFO, "Wintun adapter created via service");
+
+    if (device_guid)
+    {
+        struct buffer buf = alloc_buf_gc(64, gc);
+        buf_printf(&buf, PRIXGUID, PRIGUID_PARAM(trailing->received_adapter_id));
+        *device_guid = BSTR(&buf);
+    }
+
+    if (actual_name)
+    {
+        struct buffer buf = clear_buf();
+        ASSERT(actual_name_size > 0);
+        buf_set_write(&buf, actual_name, actual_name_size);
+        buf_printf(&buf, "%ls", trailing->received_name);
+    }
+
+    if (trailing->reboot_required)
+    {
+        msg(M_WARN, "Wintun adapter creation suggested a system reboot");
+    }
+
+    return true;
+}
+
+static bool
 service_register_ring_buffers(const struct tuntap *tt)
 {
     HANDLE msg_channel = tt->options.msg_channel;
@@ -6240,6 +6384,86 @@ tuntap_set_ip_addr(struct tuntap *tt,
     }
 
     gc_free(&gc);
+}
+
+static bool
+wintun_create_adapter(
+    struct tuntap *tt,
+    const char *dev_node,
+    const char **device_guid,
+    uint8_t *actual_name,
+    int actual_name_size,
+    struct gc_arena *gc)
+{
+    GUID adapter_id, *requested_adapter_id;
+    const char *requested_name;
+
+    if (dev_node)
+    {
+        /* Did --dev-node specify adapter GUID or name? */
+        if (FAILED(IIDFromString(wide_string(dev_node, gc), (LPIID)&adapter_id)))
+        {
+            requested_name = dev_node;
+            requested_adapter_id = NULL;
+        }
+        else
+        {
+            requested_name = PACKAGE_NAME " Wintun";
+            requested_adapter_id = &adapter_id;
+        }
+    }
+    else
+    {
+        requested_name = PACKAGE_NAME " Wintun";
+        requested_adapter_id = NULL;
+    }
+
+    /* Create Wintun adapter and return its GUID and name. */
+    if (tt->options.msg_channel)
+    {
+        return service_create_wintun_adapter(tt, requested_name, requested_adapter_id, device_guid, actual_name, actual_name_size, gc);
+    }
+    else
+    {
+        WINTUN_ADAPTER_HANDLE adapter;
+        BOOL reboot_required = FALSE;
+
+        adapter = WintunCreateAdapter(WINTUN_POOL, wide_string(requested_name, gc), requested_adapter_id, &reboot_required);
+        if (adapter == NULL)
+        {
+            msg(M_FATAL | M_ERRNO, "Failed to create Wintun adapter");
+        }
+        if (reboot_required)
+        {
+            msg(M_WARN, "Reboot required");
+        }
+
+        if (device_guid)
+        {
+            struct buffer buf = alloc_buf_gc(64, gc);
+
+            get_wintun_adapter_guid(adapter, &adapter_id);
+            buf_printf(&buf, PRIXGUID, PRIGUID_PARAM(adapter_id));
+            *device_guid = BSTR(&buf);
+        }
+
+        if (actual_name)
+        {
+            WCHAR final_name[MAX_ADAPTER_NAME];
+            struct buffer buf = clear_buf();
+
+            if (!WintunGetAdapterName(adapter, final_name))
+            {
+                msg(M_FATAL | M_ERRNO, "Failed to get Wintun adapter name");
+            }
+            ASSERT(actual_name_size > 0);
+            buf_set_write(&buf, actual_name, actual_name_size);
+            buf_printf(&buf, "%ls", final_name);
+        }
+
+        WintunFreeAdapter(adapter);
+        return true;
+    }
 }
 
 static bool
@@ -6519,35 +6743,60 @@ tun_try_open_device(struct tuntap *tt, const char *device_guid, const struct dev
 static void
 tun_open_device(struct tuntap *tt, const char *dev_node, const char **device_guid, struct gc_arena *gc)
 {
-    const struct tap_reg *tap_reg = get_tap_reg(gc);
+    const struct tap_reg *tap_reg;
     const struct panel_reg *panel_reg = get_panel_reg(gc);
-    const struct device_instance_id_interface *device_instance_id_interface = get_device_instance_id_interface(gc);
     char actual_buffer[256];
 
-    at_least_one_tap_win(tap_reg);
+    if (tt->windows_driver == WINDOWS_DRIVER_WINTUN)
+    {
+        if (!is_wintun_initialized())
+        {
+            msg(M_FATAL, "Wintun not initialized");
+        }
 
-    /*
-     * Lookup the device name in the registry, using the --dev-node high level name.
-     */
+        tap_reg = get_wintun_reg(tt, gc);
+
+        /*
+         * Lookup the device name in the registry, using the --dev-node high level name.
+         */
+        if (dev_node)
+        {
+            /* Get the device GUID for the device specified with --dev-node. */
+            *device_guid = get_device_guid(dev_node, actual_buffer, sizeof(actual_buffer), tap_reg, panel_reg, gc);
+
+            if (!*device_guid)
+            {
+                /* Specified adapter was not found. But with Wintun, we create a new adapter on the fly. */
+                if (!wintun_create_adapter(tt, dev_node, device_guid, actual_buffer, sizeof(actual_buffer), gc))
+                {
+                    msg(M_FATAL, "Failed to create Wintun adapter: %s", dev_node);
+                }
+            }
+        }
+    }
+    else
+    {
+        tap_reg = get_tap_win_reg(gc);
+        at_least_one_tap_win(tap_reg);
+
+        /*
+         * Lookup the device name in the registry, using the --dev-node high level name.
+         */
+        if (dev_node)
+        {
+            /* Get the device GUID for the device specified with --dev-node. */
+            *device_guid = get_device_guid(dev_node, actual_buffer, sizeof(actual_buffer), tap_reg, panel_reg, gc);
+
+            if (!*device_guid)
+            {
+                msg(M_FATAL, "Adapter '%s' not found", dev_node);
+            }
+        }
+    }
+
     if (dev_node)
     {
-        enum windows_driver_type windows_driver = WINDOWS_DRIVER_UNSPECIFIED;
-
-        /* Get the device GUID for the device specified with --dev-node. */
-        *device_guid = get_device_guid(dev_node, actual_buffer, sizeof(actual_buffer), &windows_driver, tap_reg, panel_reg, gc);
-
-        if (!*device_guid)
-        {
-            msg(M_FATAL, "Adapter '%s' not found", dev_node);
-        }
-
-        if (tt->windows_driver != windows_driver)
-        {
-            msg(M_FATAL, "Adapter '%s' is using %s driver, %s expected. If you want to use this device, adjust --windows-driver.",
-                dev_node, print_windows_driver(windows_driver), print_windows_driver(tt->windows_driver));
-        }
-
-        if (!tun_try_open_device(tt, *device_guid, device_instance_id_interface))
+        if (!tun_try_open_device(tt, *device_guid, get_device_instance_id_interface(gc)))
         {
             msg(M_FATAL, "Failed to open %s adapter: %s", print_windows_driver(tt->windows_driver), dev_node);
         }
@@ -6559,31 +6808,33 @@ tun_open_device(struct tuntap *tt, const char *dev_node, const char **device_gui
         /* Try opening all TAP devices until we find one available */
         while (true)
         {
-            enum windows_driver_type windows_driver = WINDOWS_DRIVER_UNSPECIFIED;
             *device_guid = get_unspecified_device_guid(device_number,
                                                        actual_buffer,
                                                        sizeof(actual_buffer),
                                                        tap_reg,
                                                        panel_reg,
-                                                       &windows_driver,
                                                        gc);
 
             if (!*device_guid)
             {
-                msg(M_FATAL, "All %s adapters on this system are currently in use or disabled.", print_windows_driver(tt->windows_driver));
+                if (tt->windows_driver == WINDOWS_DRIVER_WINTUN)
+                {
+                    if (!wintun_create_adapter(tt, NULL, device_guid, actual_buffer, sizeof(actual_buffer), gc))
+                    {
+                        msg(M_FATAL, "Failed to create a new Wintun adapter");
+                    }
+                }
+                else
+                {
+                    msg(M_FATAL, "All %s adapters on this system are currently in use or disabled.", print_windows_driver(tt->windows_driver));
+                }
             }
 
-            if (tt->windows_driver != windows_driver)
-            {
-                goto next;
-            }
-
-            if (tun_try_open_device(tt, *device_guid, device_instance_id_interface))
+            if (tun_try_open_device(tt, *device_guid, get_device_instance_id_interface(gc)))
             {
                 break;
             }
 
-next:
             device_number++;
         }
     }

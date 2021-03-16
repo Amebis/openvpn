@@ -7650,7 +7650,7 @@ add_option(struct options *options,
         VERIFY_PERMISSION(OPT_P_GENERAL);
         set_pause_exit_win32();
     }
-    else if (streq(p[0], "service") && p[1] && !p[3])
+    else if (streq(p[0], "service") && p[1] && !p[4])
     {
         VERIFY_PERMISSION(OPT_P_GENERAL);
         options->exit_event_name = p[1];
@@ -7658,6 +7658,7 @@ add_option(struct options *options,
         {
             options->exit_event_initial_state = (atoi(p[2]) != 0);
         }
+        options->service_instance = p[3];
     }
     else if (streq(p[0], "allow-nonadmin") && !p[2])
     {
