@@ -45,6 +45,7 @@
 #include "validate.h"
 #include "block_dns.h"
 #include "ring_buffer.h"
+#include "wintun_hlp.h"
 
 #define IO_TIMEOUT  2000 /*ms*/
 
@@ -122,6 +123,7 @@ typedef union {
     block_dns_message_t block_dns;
     dns_cfg_message_t dns;
     enable_dhcp_message_t dhcp;
+    create_wintun_adapter_message_t cwa;
     register_ring_buffers_message_t rrb;
     set_mtu_message_t mtu;
 } pipe_message_t;
@@ -1503,6 +1505,53 @@ DuplicateAndMapRing(HANDLE ovpn_proc, HANDLE orig_handle, HANDLE *new_handle, st
 }
 
 static DWORD
+HandleCreateWintunAdapter(const create_wintun_adapter_message_t *msg, WINTUN_ADAPTER_HANDLE *wintun_adapter, DWORD *trailing_size, void **trailing_data)
+{
+    static const GUID blank_guid = { 0 };
+    DWORD err;
+    GUID *received_adapter_id;
+
+    if (!is_wintun_initialized())
+    {
+        MsgToEventLog(M_SYSERR, TEXT("Wintun not initialized"));
+        return ERROR_INVALID_FUNCTION;
+    }
+
+    if (*wintun_adapter)
+    {
+        WintunCloseAdapter(*wintun_adapter);
+        *wintun_adapter = NULL;
+    }
+
+    received_adapter_id = calloc(1, sizeof(*received_adapter_id));
+    if (!received_adapter_id)
+    {
+        MsgToEventLog(M_SYSERR, TEXT("Error allocating memory"));
+        return ERROR_NOT_ENOUGH_MEMORY;
+    }
+
+    *wintun_adapter = WintunCreateAdapter(
+        msg->requested_name,
+        WINTUN_TUNNEL_TYPE,
+        memcmp(&msg->requested_adapter_id, &blank_guid, sizeof(GUID)) != 0 ? &msg->requested_adapter_id : NULL);
+    if (*wintun_adapter == NULL)
+    {
+        err = GetLastError();
+        MsgToEventLog(M_SYSERR | MSG_FLAGS_SYS_CODE, TEXT("Failed to create Wintun adapter"));
+        goto cleanup_t;
+    }
+
+    get_wintun_adapter_guid(*wintun_adapter, received_adapter_id);
+    *trailing_size = sizeof(*received_adapter_id);
+    *trailing_data = received_adapter_id;
+    return ERROR_SUCCESS;
+
+cleanup_t:
+    free(received_adapter_id);
+    return err;
+}
+
+static DWORD
 HandleRegisterRingBuffers(const register_ring_buffers_message_t *rrb, HANDLE ovpn_proc,
                           ring_buffer_handles_t *ring_buffer_handles)
 {
@@ -1576,7 +1625,7 @@ HandleMTUMessage(const set_mtu_message_t *mtu)
 }
 
 static VOID
-HandleMessage(HANDLE pipe, HANDLE ovpn_proc, ring_buffer_handles_t *ring_buffer_handles,
+HandleMessage(HANDLE pipe, HANDLE ovpn_proc, WINTUN_ADAPTER_HANDLE *wintun_adapter, ring_buffer_handles_t *ring_buffer_handles,
               DWORD bytes, DWORD count, LPHANDLE events, undo_lists_t *lists)
 {
     pipe_message_t msg;
@@ -1648,11 +1697,23 @@ HandleMessage(HANDLE pipe, HANDLE ovpn_proc, ring_buffer_handles_t *ring_buffer_
             }
             break;
 
+        case msg_create_wintun_adapter:
+            if (msg.header.size == sizeof(msg.cwa))
+            {
+                ack.error_number = HandleCreateWintunAdapter(&msg.cwa, wintun_adapter, &ack.trailing_size, &trailing_data);
+            }
+            break;
+
         case msg_register_ring_buffers:
             if (msg.header.size == sizeof(msg.rrb))
             {
                 ack.error_number = HandleRegisterRingBuffers(&msg.rrb, ovpn_proc, ring_buffer_handles);
             }
+            break;
+
+        case msg_unregister_ring_buffers:
+            CloseRingBufferHandles(ring_buffer_handles);
+            ack.error_number = ERROR_SUCCESS;
             break;
 
         case msg_set_mtu:
@@ -1758,6 +1819,7 @@ RunOpenvpn(LPVOID p)
     WCHAR *cmdline = NULL;
     size_t cmdline_size;
     undo_lists_t undo_lists;
+    WINTUN_ADAPTER_HANDLE wintun_adapter = NULL;
     ring_buffer_handles_t ring_buffer_handles;
     WCHAR errmsg[512] = L"";
 
@@ -2027,7 +2089,7 @@ RunOpenvpn(LPVOID p)
             break;
         }
 
-        HandleMessage(ovpn_pipe, proc_info.hProcess, &ring_buffer_handles, bytes, _countof(handles), handles, &undo_lists);
+        HandleMessage(ovpn_pipe, proc_info.hProcess, &wintun_adapter, &ring_buffer_handles, bytes, _countof(handles), handles, &undo_lists);
     }
 
     WaitForSingleObject(proc_info.hProcess, IO_TIMEOUT);
@@ -2055,6 +2117,7 @@ out:
     DestroyEnvironmentBlock(user_env);
     FreeStartupData(&sud);
     CloseRingBufferHandles(&ring_buffer_handles);
+    WintunCloseAdapter(wintun_adapter);
     CloseHandleEx(&proc_info.hProcess);
     CloseHandleEx(&proc_info.hThread);
     CloseHandleEx(&stdin_read);
@@ -2262,6 +2325,8 @@ ServiceStartInteractive(DWORD dwArgc, LPTSTR *lpszArgv)
     status.dwWin32ExitCode = NO_ERROR;
     status.dwWaitHint = 3000;
     ReportStatusToSCMgr(service, &status);
+
+    init_wintun(TEXT("wintun.dll"), service_instance);
 
     iphlpapi = LoadLibraryEx(TEXT("iphlpapi.dll"), NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (iphlpapi)
