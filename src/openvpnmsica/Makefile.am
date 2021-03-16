@@ -53,4 +53,5 @@ libopenvpnmsica_la_SOURCES = \
 	$(top_srcdir)/src/tapctl/basic.h \
 	$(top_srcdir)/src/tapctl/error.c $(top_srcdir)/src/tapctl/error.h \
 	$(top_srcdir)/src/tapctl/tap.c $(top_srcdir)/src/tapctl/tap.h \
+	$(top_srcdir)/src/openvpn/wintun_hlp.c $(top_srcdir)/src/openvpn/wintun_hlp.h \
 	openvpnmsica_resources.rc
