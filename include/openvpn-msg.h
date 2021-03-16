@@ -24,6 +24,8 @@
 #ifndef OPENVPN_MSG_H_
 #define OPENVPN_MSG_H_
 
+#include <windows.h>
+
 typedef enum {
     msg_acknowledgement,
     msg_add_address,
@@ -107,6 +109,7 @@ typedef struct {
 typedef struct {
     message_header_t header;
     int error_number;
+    DWORD trailing_size;
 } ack_message_t;
 
 typedef struct {
