@@ -141,6 +141,10 @@
     <VcpkgEnabled>true</VcpkgEnabled>
     <VcpkgTriplet>x64-windows-ovpn</VcpkgTriplet>
   </PropertyGroup>
+  <PropertyGroup Label="Vcpkg">
+    <VcpkgEnableManifest>true</VcpkgEnableManifest>
+    <VcpkgAdditionalInstallOptions>--overlay-triplets=$(SolutionDir)contrib\vcpkg-triplets --overlay-ports=$(SolutionDir)contrib\vcpkg-ports</VcpkgAdditionalInstallOptions>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Link>
       <CETCompat>true</CETCompat>
@@ -190,6 +194,7 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\openvpn\wintun_hlp.c" />
     <ClCompile Include="..\tapctl\error.c" />
     <ClCompile Include="..\tapctl\tap.c" />
     <ClCompile Include="dllmain.c" />
@@ -198,6 +203,7 @@
     <ClCompile Include="openvpnmsica.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\openvpn\wintun_hlp.h" />
     <ClInclude Include="..\tapctl\basic.h" />
     <ClInclude Include="..\tapctl\error.h" />
     <ClInclude Include="..\tapctl\tap.h" />

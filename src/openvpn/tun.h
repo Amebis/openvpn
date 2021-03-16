@@ -377,7 +377,6 @@ route_order(void)
 struct tap_reg
 {
     const char *guid;
-    enum windows_driver_type windows_driver;
     struct tap_reg *next;
 };
 
