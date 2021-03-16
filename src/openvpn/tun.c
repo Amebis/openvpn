@@ -4252,7 +4252,7 @@ get_unspecified_device_guid(const int device_number,
     if (actual_name)
     {
         ASSERT(actual_name_size > 0);
-        buf_set_write(&actual, actual_name, actual_name_size);
+        buf_set_write(&actual, (uint8_t *)actual_name, actual_name_size);
     }
 
     /* Move on to specified device number */
@@ -4316,7 +4316,7 @@ get_device_guid(const char *name,
     if (actual_name)
     {
         ASSERT(actual_name_size > 0);
-        buf_set_write(&actual, actual_name, actual_name_size);
+        buf_set_write(&actual, (uint8_t *)actual_name, actual_name_size);
     }
 
     /* Check if GUID was explicitly specified as --dev-node parameter */
@@ -5628,11 +5628,11 @@ netsh_get_id(const char *dev_node, struct gc_arena *gc)
 
     if (dev_node)
     {
-        guid = get_device_guid(dev_node, BPTR(&actual), BCAP(&actual), NULL, tap_reg, panel_reg, gc);
+        guid = get_device_guid(dev_node, BSTR(&actual), BCAP(&actual), NULL, tap_reg, panel_reg, gc);
     }
     else
     {
-        guid = get_unspecified_device_guid(0, BPTR(&actual), BCAP(&actual), tap_reg, panel_reg, NULL, gc);
+        guid = get_unspecified_device_guid(0, BSTR(&actual), BCAP(&actual), tap_reg, panel_reg, NULL, gc);
 
         if (get_unspecified_device_guid(1, NULL, 0, tap_reg, panel_reg, NULL, gc)) /* ambiguous if more than one TAP-Windows adapter */
         {
@@ -5644,9 +5644,9 @@ netsh_get_id(const char *dev_node, struct gc_arena *gc)
     {
         return "NULL";     /* not found */
     }
-    else if (strcmp(BPTR(&actual), "NULL"))
+    else if (strcmp(BSTR(&actual), "NULL"))
     {
-        return BPTR(&actual); /* control panel name */
+        return BSTR(&actual); /* control panel name */
     }
     else
     {
