@@ -21,8 +21,8 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef BASIC_H
-#define BASIC_H
+#ifndef OPENVPN_BASIC_H
+#define OPENVPN_BASIC_H
 
 #define BOOL_CAST(x) ((x) ? (true) : (false))
 
@@ -34,4 +34,21 @@
 
 #define IPV4_NETMASK_HOST 0xffffffffU
 
-#endif
+#define PRIXGUID        "{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}"
+#define PRIGUID_PARAM(g) \
+    (unsigned int)(g).Data1, \
+    (unsigned int)(g).Data2, \
+    (unsigned int)(g).Data3, \
+    (unsigned int)(g).Data4[0], \
+    (unsigned int)(g).Data4[1], \
+    (unsigned int)(g).Data4[2], \
+    (unsigned int)(g).Data4[3], \
+    (unsigned int)(g).Data4[4], \
+    (unsigned int)(g).Data4[5], \
+    (unsigned int)(g).Data4[6], \
+    (unsigned int)(g).Data4[7]
+
+#define __L(q) L ## q
+#define _L(q)  __L(q)
+
+#endif /* ifndef OPENVPN_BASIC_H */
