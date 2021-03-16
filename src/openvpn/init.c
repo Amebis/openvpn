@@ -1848,7 +1848,8 @@ do_open_tun(struct context *c)
     {
         /* guess actual tun/tap unit number that will be returned
          * by open_tun */
-        const char *guess = guess_tuntap_dev(c->options.dev,
+        const char *guess = guess_tuntap_dev(c->c1.tuntap,
+                                             c->options.dev,
                                              c->options.dev_type,
                                              c->options.dev_node,
                                              &gc);
