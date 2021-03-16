@@ -33,6 +33,9 @@
     <ClCompile Include="..\tapctl\tap.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\openvpn\wintun_hlp.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="openvpnmsica.h">
@@ -51,6 +54,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\tapctl\basic.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\openvpn\wintun_hlp.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

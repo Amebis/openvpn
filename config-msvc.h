@@ -120,6 +120,9 @@
 #define PATH_SEPARATOR     '\\'
 #define PATH_SEPARATOR_STR "\\"
 
+/* Prevent inclusion of winsock.h in windows.h. */
+#define _WINSOCKAPI_
+
 #ifndef __cplusplus
 #define inline __inline
 #endif
