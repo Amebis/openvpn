@@ -6,7 +6,7 @@ if [ "${TRAVIS_OS_NAME}" = "windows" ]; then
     choco install visualstudio2019buildtools --package-parameters "--includeRecommended --includeOptional"
     choco install visualstudio2019-workload-vctools
     cd ..
-    git clone https://github.com/openvpn/openvpn-build.git
+    git clone https://github.com/Amebis/openvpn-build.git
     cd openvpn-build
     PATH="/c/Strawberry/perl/bin:":$PATH MODE=DEPS msvc/build.bat
     exit 0
