@@ -107,6 +107,11 @@ dont_mute(unsigned int flags)
 void
 x_msg_va(const unsigned int flags, const char *format, va_list arglist)
 {
+    if (flags & M_DEBUG)
+    {
+        return;
+    }
+
     /* Secure last error before it is overridden. */
     DWORD dwResult = (flags & M_ERRNO) != 0 ? GetLastError() : ERROR_SUCCESS;
 
