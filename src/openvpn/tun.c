@@ -128,7 +128,7 @@ do_address_service(const bool add, const short family, const struct tuntap *tt)
             print_in6_addr(tt->local_ipv6, 0, &gc), addr.prefix_len);
     }
 
-    if (!send_msg_iservice(pipe, &addr, sizeof(addr), &ack, "TUN"))
+    if (!send_msg_iservice(pipe, &addr, sizeof(addr), &ack, "TUN", NULL, &gc))
     {
         goto out;
     }
@@ -182,7 +182,7 @@ do_dns_domain_service(bool add, const struct tuntap *tt)
 
     msg(D_LOW, "%s dns domain on '%s' (if_index = %d) using service",
             (add ? "Setting" : "Deleting"), dns.iface.name, dns.iface.index);
-    if (!send_msg_iservice(pipe, &dns, sizeof(dns), &ack, "TUN"))
+    if (!send_msg_iservice(pipe, &dns, sizeof(dns), &ack, "TUN", NULL, &gc))
     {
         goto out;
     }
@@ -259,7 +259,7 @@ do_dns_service(bool add, const short family, const struct tuntap *tt)
     msg(D_LOW, "%s %s dns servers on '%s' (if_index = %d) using service",
         (add ? "Setting" : "Deleting"), ip_proto_name, dns.iface.name, dns.iface.index);
 
-    if (!send_msg_iservice(pipe, &dns, sizeof(dns), &ack, "TUN"))
+    if (!send_msg_iservice(pipe, &dns, sizeof(dns), &ack, "TUN", NULL, &gc))
     {
         goto out;
     }
@@ -305,7 +305,7 @@ do_set_mtu_service(const struct tuntap *tt, const short family, const int mtu)
         msg(M_INFO, "NOTE: IPv6 interface MTU < 1280 conflicts with IETF standards and might not work");
     }
 
-    if (!send_msg_iservice(pipe, &mtu_msg, sizeof(mtu_msg), &ack, "Set_mtu"))
+    if (!send_msg_iservice(pipe, &mtu_msg, sizeof(mtu_msg), &ack, "Set_mtu", NULL, &gc))
     {
         goto out;
     }
@@ -5587,7 +5587,7 @@ service_enable_dhcp(const struct tuntap *tt)
         .iface = { .index = tt->adapter_index, .name = "" }
     };
 
-    if (!send_msg_iservice(pipe, &dhcp, sizeof(dhcp), &ack, "Enable_dhcp"))
+    if (!send_msg_iservice(pipe, &dhcp, sizeof(dhcp), &ack, "Enable_dhcp", NULL, &gc))
     {
         goto out;
     }
@@ -5944,7 +5944,7 @@ register_dns_service(const struct tuntap *tt)
 
     message_header_t rdns = { msg_register_dns, sizeof(message_header_t), 0 };
 
-    if (!send_msg_iservice(msg_channel, &rdns, sizeof(rdns), &ack, "Register_dns"))
+    if (!send_msg_iservice(msg_channel, &rdns, sizeof(rdns), &ack, "Register_dns", NULL, &gc))
     {
         gc_free(&gc);
         return;
@@ -5985,7 +5985,7 @@ service_register_ring_buffers(const struct tuntap *tt)
         .receive_tail_moved = tt->rw_handle.write
     };
 
-    if (!send_msg_iservice(msg_channel, &msg, sizeof(msg), &ack, "Register ring buffers"))
+    if (!send_msg_iservice(msg_channel, &msg, sizeof(msg), &ack, "Register ring buffers", NULL, &gc))
     {
         ret = false;
     }
@@ -6135,7 +6135,7 @@ tuntap_set_ip_addr(struct tuntap *tt,
             };
 
             if (send_msg_iservice(tt->options.msg_channel, &msg, sizeof(msg),
-                                  &ack, "TUN"))
+                                  &ack, "TUN", NULL, &gc))
             {
                 status = ack.error_number;
             }
