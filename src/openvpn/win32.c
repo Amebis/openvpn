@@ -1186,7 +1186,7 @@ win_block_dns_service(bool add, int index, const HANDLE pipe)
         .iface = { .index = index, .name = "" }
     };
 
-    if (!send_msg_iservice(pipe, &data, sizeof(data), &ack, "Block_DNS"))
+    if (!send_msg_iservice(pipe, &data, sizeof(data), &ack, "Block_DNS", NULL, &gc))
     {
         goto out;
     }
@@ -1396,9 +1396,9 @@ win32_version_string(struct gc_arena *gc, bool add_name)
 
 bool
 send_msg_iservice(HANDLE pipe, const void *data, size_t size,
-                  ack_message_t *ack, const char *context)
+                  ack_message_t *ack, const char *context,
+                  void **trailing_data, struct gc_arena *gc)
 {
-    struct gc_arena gc = gc_new();
     DWORD len;
     bool ret = true;
 
@@ -1407,11 +1407,35 @@ send_msg_iservice(HANDLE pipe, const void *data, size_t size,
     {
         msg(M_WARN, "%s: could not talk to service: %s [%lu]",
             context ? context : "Unknown",
-            strerror_win32(GetLastError(), &gc), GetLastError());
+            strerror_win32(GetLastError(), gc), GetLastError());
         ret = false;
+        goto out;
     }
 
-    gc_free(&gc);
+    if (ack->trailing_size)
+    {
+        struct buffer buf = alloc_buf_gc(ack->trailing_size, gc);
+        if (ReadFile(pipe, buf.data, ack->trailing_size, &len, NULL))
+        {
+            if (trailing_data)
+            {
+                *trailing_data = buf.data;
+            }
+        }
+        else
+        {
+            msg(M_WARN, "%s: could not read trailing data from service: %s [%lu]",
+                context ? context : "Unknown",
+                strerror_win32(GetLastError(), gc), GetLastError());
+            ret = false;
+        }
+    }
+    else if (trailing_data)
+    {
+        *trailing_data = NULL;
+    }
+
+out:
     return ret;
 }
 

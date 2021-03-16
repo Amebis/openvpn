@@ -310,11 +310,14 @@ const char *win32_version_string(struct gc_arena *gc, bool add_name);
 
 /*
  * Send the |size| bytes in buffer |data| to the interactive service |pipe|
- * and read the result in |ack|. Returns false on communication error.
+ * and read result in |ack|. Returns false on communication error.
  * The string in |context| is used to prefix error messages.
+ * The trailing data is read and returned as |trailing_data|. The size of
+ * the trailing data is specified as |ack.trailing_size|
  */
 bool send_msg_iservice(HANDLE pipe, const void *data, size_t size,
-                       ack_message_t *ack, const char *context);
+                       ack_message_t *ack, const char *context,
+                       void **trailing_data, struct gc_arena *gc);
 
 /*
  * Attempt to simulate fork/execve on Windows

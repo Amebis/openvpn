@@ -3016,7 +3016,7 @@ do_route_service(const bool add, const route_message_t *rt, const size_t size, H
     ack_message_t ack;
     struct gc_arena gc = gc_new();
 
-    if (!send_msg_iservice(pipe, rt, size, &ack, "ROUTE"))
+    if (!send_msg_iservice(pipe, rt, size, &ack, "ROUTE", NULL, &gc))
     {
         goto out;
     }
