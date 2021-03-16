@@ -1020,9 +1020,9 @@ parse_guid(
     _In_z_ LPCWSTR szArg,
     _Out_ GUID *guid)
 {
-    if (swscanf_s(szArg, _L(PRIXGUID), PRIGUID_PARAM_REF(*guid)) != 11)
+    if (FAILED(IIDFromString(szArg, guid)))
     {
-        msg(M_NONFATAL | M_ERRNO, "%s: swscanf_s(\"%ls\") failed", __FUNCTION__, szArg);
+        msg(M_NONFATAL, "%s: IIDFromString(\"%ls\") failed", __FUNCTION__, szArg);
         return FALSE;
     }
     return TRUE;
@@ -1138,7 +1138,7 @@ ProcessDeferredAction(_In_ MSIHANDLE hInstall)
             if (dwResult == ERROR_SUCCESS)
             {
                 /* Set adapter name. May fail on some machines, but that is not critical - use silent
-                   flag to mute messagebox and print error only to log */
+                 * flag to mute messagebox and print error only to log */
                 tap_set_adapter_name(&guidAdapter, szName, TRUE);
             }
         }
