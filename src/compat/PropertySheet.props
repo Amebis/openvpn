@@ -6,6 +6,7 @@
     <OPENVPN_DEPROOT>$(SOURCEBASE)\..\openvpn-build\msvc\image$(PlatformArchitecture)</OPENVPN_DEPROOT>
     <OPENSSL_HOME>$(OPENVPN_DEPROOT)</OPENSSL_HOME>
     <TAP_WINDOWS_HOME>$(OPENVPN_DEPROOT)</TAP_WINDOWS_HOME>
+    <WINTUN_HOME>$(OPENVPN_DEPROOT)</WINTUN_HOME>
     <LZO_HOME>$(OPENVPN_DEPROOT)</LZO_HOME>
     <PKCS11H_HOME>$(OPENVPN_DEPROOT)</PKCS11H_HOME>
   </PropertyGroup>
@@ -41,6 +42,10 @@
     </BuildMacro>
     <BuildMacro Include="TAP_WINDOWS_HOME">
       <Value>$(TAP_WINDOWS_HOME)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="WINTUN_HOME">
+      <Value>$(WINTUN_HOME)</Value>
       <EnvironmentVariable>true</EnvironmentVariable>
     </BuildMacro>
     <BuildMacro Include="LZO_HOME">
