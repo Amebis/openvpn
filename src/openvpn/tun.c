@@ -6005,7 +6005,7 @@ register_dns_service(const struct tuntap *tt)
     gc_free(&gc);
 }
 
-static bool
+static void
 service_create_wintun_adapter(
     const struct tuntap *tt,
     const char *requested_name,
@@ -6034,19 +6034,22 @@ service_create_wintun_adapter(
 
     if (!send_msg_iservice(msg_channel, &msg, sizeof(msg), &ack, "Create wintun adapter", (void **)&trailing, gc))
     {
-        return false;
+        return;
     }
-    if (ack.error_number != NO_ERROR)
+    if ((ack.error_number == SPAPI_E_AUTHENTICODE_TRUST_NOT_ESTABLISHED || ack.error_number == 0xe0000242)
+        && win32_version_info() == WIN_7)
     {
-        msg(M_NONFATAL, "Creating Wintun adapter failed using service: %s [status=0x%x]",
+        msg(M_FATAL, "Windows 7 requires KB2921916 installed to load Wintun driver");
+    }
+    else if (ack.error_number != NO_ERROR)
+    {
+        msg(M_FATAL, "Creating Wintun adapter failed using service: %s [status=0x%x]",
             strerror_win32(ack.error_number, gc), ack.error_number);
-        return false;
     }
     if (ack.trailing_size < sizeof(*trailing))
     {
-        msg(M_NONFATAL, "Creating Wintun adapter returned an unexpected response: [size=%u]",
+        msg(M_FATAL, "Creating Wintun adapter using service returned an unexpected response: [size=%u]",
             ack.trailing_size);
-        return false;
     }
 
     msg(M_INFO, "Wintun adapter created via service");
@@ -6070,8 +6073,6 @@ service_create_wintun_adapter(
     {
         msg(M_WARN, "Wintun adapter creation suggested a system reboot");
     }
-
-    return true;
 }
 
 static bool
@@ -6101,7 +6102,7 @@ service_register_ring_buffers(const struct tuntap *tt)
     }
     else if (ack.error_number != NO_ERROR)
     {
-        msg(M_NONFATAL, "Register ring buffers failed using service: %s [status=0x%x]",
+        msg(M_NONFATAL, "Register ring buffers using service failed: %s [status=0x%x]",
             strerror_win32(ack.error_number, &gc), ack.error_number);
         ret = false;
     }
@@ -6134,7 +6135,7 @@ service_unregister_ring_buffers(const struct tuntap *tt)
     }
     else if (ack.error_number != NO_ERROR)
     {
-        msg(M_NONFATAL, "Unregister ring buffers failed using service: %s [status=0x%x]",
+        msg(M_NONFATAL, "Unregister ring buffers using service failed: %s [status=0x%x]",
             strerror_win32(ack.error_number, &gc), ack.error_number);
         ret = false;
     }
@@ -6385,7 +6386,7 @@ tuntap_set_ip_addr(struct tuntap *tt,
     gc_free(&gc);
 }
 
-static bool
+static void
 wintun_create_adapter(
     struct tuntap *tt,
     const char *dev_node,
@@ -6420,7 +6421,7 @@ wintun_create_adapter(
     /* Create Wintun adapter and return its GUID and name. */
     if (tt->options.msg_channel)
     {
-        return service_create_wintun_adapter(tt, requested_name, requested_adapter_id, device_guid, actual_name, actual_name_size, gc);
+        service_create_wintun_adapter(tt, requested_name, requested_adapter_id, device_guid, actual_name, actual_name_size, gc);
     }
     else
     {
@@ -6430,7 +6431,16 @@ wintun_create_adapter(
         adapter = WintunCreateAdapter(WINTUN_POOL, wide_string(requested_name, gc), requested_adapter_id, &reboot_required);
         if (adapter == NULL)
         {
-            msg(M_FATAL | M_ERRNO, "Failed to create Wintun adapter");
+            DWORD err = GetLastError();
+            if ((err == SPAPI_E_AUTHENTICODE_TRUST_NOT_ESTABLISHED || err == 0xe0000242)
+                && win32_version_info() == WIN_7)
+            {
+                msg(M_FATAL, "Windows 7 requires KB2921916 installed to load Wintun driver");
+            }
+            else
+            {
+                msg(M_FATAL | M_ERRNO, "Failed to create Wintun adapter: %s", requested_name);
+            }
         }
         if (reboot_required)
         {
@@ -6461,7 +6471,6 @@ wintun_create_adapter(
         }
 
         WintunFreeAdapter(adapter);
-        return true;
     }
 }
 
@@ -6766,10 +6775,7 @@ tun_open_device(struct tuntap *tt, const char *dev_node, const char **device_gui
             if (!*device_guid)
             {
                 /* Specified adapter was not found. But with Wintun, we create a new adapter on the fly. */
-                if (!wintun_create_adapter(tt, dev_node, device_guid, actual_buffer, sizeof(actual_buffer), gc))
-                {
-                    msg(M_FATAL, "Failed to create Wintun adapter: %s", dev_node);
-                }
+                wintun_create_adapter(tt, dev_node, device_guid, actual_buffer, sizeof(actual_buffer), gc);
             }
         }
     }
@@ -6818,10 +6824,7 @@ tun_open_device(struct tuntap *tt, const char *dev_node, const char **device_gui
             {
                 if (tt->windows_driver == WINDOWS_DRIVER_WINTUN)
                 {
-                    if (!wintun_create_adapter(tt, NULL, device_guid, actual_buffer, sizeof(actual_buffer), gc))
-                    {
-                        msg(M_FATAL, "Failed to create a new Wintun adapter");
-                    }
+                    wintun_create_adapter(tt, NULL, device_guid, actual_buffer, sizeof(actual_buffer), gc);
                 }
                 else
                 {
