@@ -36,6 +36,7 @@
 
 #include "error.h"
 #include "wintun_hlp.h"
+#include <setupapi.h>
 
 #ifdef _WIN32
 
@@ -49,10 +50,13 @@
  */
 typedef struct _WINTUN_ADAPTER
 {
+    HDEVINFO DevInfo;
+    SP_DEVINFO_DATA DevInfoData;
     GUID CfgInstanceID;
     WCHAR DevInstanceID[MAX_INSTANCE_ID];
     DWORD LuidIndex;
     DWORD IfType;
+    DWORD IfIndex;
     WCHAR Pool[WINTUN_MAX_POOL];
 } WINTUN_ADAPTER;
 

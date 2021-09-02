@@ -19,7 +19,7 @@ jobs:
       PKCS11_HELPER_VERSION: "1.26"
       OPENSSL_VERSION: "1.1.1j"
       TAP_WINDOWS_VERSION: "9.23.3"
-      WINTUN_VERSION: "0.12"
+      WINTUN_VERSION: "0.13"
       CHOST: ${{ matrix.chost }}
       TARGET: ${{ matrix.target }}
     steps:
