@@ -29,11 +29,8 @@
 #include <windows.h>
 #include <sal.h>
 /* TODO: Remove once SAL support in MinGW headers is updated. */
-#ifndef _Out_cap_c_
-#define _Out_cap_c_(s)
-#endif
-#ifndef _Ret_bytecount_
-#define _Ret_bytecount_(s)
+#ifndef _Post_maybenull_
+#define _Post_maybenull_
 #endif
 
 #include <wintun.h>
