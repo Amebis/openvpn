@@ -6052,7 +6052,7 @@ service_create_wintun_adapter(
             ack.trailing_size);
     }
 
-    msg(M_INFO, "Wintun adapter created via service");
+    msg(M_INFO, "Wintun adapter %ls/" PRIXGUID " created via service", trailing->received_name, PRIGUID_PARAM(trailing->received_adapter_id));
 
     if (device_guid)
     {
@@ -6427,6 +6427,7 @@ wintun_create_adapter(
     {
         WINTUN_ADAPTER_HANDLE adapter;
         BOOL reboot_required = FALSE;
+        WCHAR final_name[MAX_ADAPTER_NAME];
 
         adapter = WintunCreateAdapter(WINTUN_POOL, wide_string(requested_name, gc), requested_adapter_id, &reboot_required);
         if (adapter == NULL)
@@ -6447,24 +6448,24 @@ wintun_create_adapter(
             msg(M_WARN, "Reboot required");
         }
 
+        if (!WintunGetAdapterName(adapter, final_name))
+        {
+            msg(M_FATAL | M_ERRNO, "Failed to get Wintun adapter name");
+        }
+        get_wintun_adapter_guid(adapter, &adapter_id);
+
+        msg(M_INFO, "Wintun adapter %ls/" PRIXGUID " created", final_name, PRIGUID_PARAM(adapter_id));
+
         if (device_guid)
         {
             struct buffer buf = alloc_buf_gc(64, gc);
-
-            get_wintun_adapter_guid(adapter, &adapter_id);
             buf_printf(&buf, PRIXGUID, PRIGUID_PARAM(adapter_id));
             *device_guid = BSTR(&buf);
         }
 
         if (actual_name)
         {
-            WCHAR final_name[MAX_ADAPTER_NAME];
             struct buffer buf = clear_buf();
-
-            if (!WintunGetAdapterName(adapter, final_name))
-            {
-                msg(M_FATAL | M_ERRNO, "Failed to get Wintun adapter name");
-            }
             ASSERT(actual_name_size > 0);
             buf_set_write(&buf, actual_name, actual_name_size);
             buf_printf(&buf, "%ls", final_name);
@@ -6697,17 +6698,18 @@ tun_try_open_device(struct tuntap *tt, const char *device_guid, const struct dev
         const struct device_instance_id_interface *dev_if;
 
         /* Open Wintun adapter */
-        for (dev_if = device_instance_id_interface; dev_if != NULL; dev_if = dev_if->next)
+        for (dev_if = device_instance_id_interface; ; dev_if = dev_if->next)
         {
+            if (dev_if == NULL)
+            {
+                msg(D_TUNTAP_INFO, "Wintun device %s not found", path, device_guid);
+                return false;
+            }
             if (strcmp(dev_if->net_cfg_instance_id, device_guid) == 0)
             {
                 path = dev_if->device_interface_list;
                 break;
             }
-        }
-        if (path == NULL)
-        {
-            return false;
         }
     }
     else
@@ -6738,7 +6740,7 @@ tun_try_open_device(struct tuntap *tt, const char *device_guid, const struct dev
         /* Wintun adapter may be considered "open" after ring buffers are successfuly registered. */
         if (!wintun_register_ring_buffer(tt, device_guid))
         {
-            msg(D_TUNTAP_INFO, "Failed to register %s adapter ring buffers", device_guid);
+            msg(D_TUNTAP_INFO, "Failed to register Wintun device %s ring buffers", device_guid);
             CloseHandle(tt->hand);
             tt->hand = NULL;
             return false;
@@ -6845,7 +6847,7 @@ tun_open_device(struct tuntap *tt, const char *dev_node, const char **device_gui
      * GUID using the registry */
     tt->actual_name = string_alloc(actual_buffer, NULL);
 
-    msg(M_INFO, "%s device [%s] opened", print_windows_driver(tt->windows_driver), tt->actual_name);
+    msg(M_INFO, "%s adapter %s opened", print_windows_driver(tt->windows_driver), tt->actual_name);
     tt->adapter_index = get_adapter_index(*device_guid);
 }
 
