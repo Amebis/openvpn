@@ -69,7 +69,7 @@ openvpn_swprintf(wchar_t *const str, const size_t size, const wchar_t *const for
         va_end(arglist);
         str[size - 1] = L'\0';
     }
-    return (len >= 0 && len < size);
+    return (len >= 0 && (size_t)len < size);
 }
 
 static DWORD
