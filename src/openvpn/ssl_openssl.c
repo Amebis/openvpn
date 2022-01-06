@@ -65,10 +65,6 @@
 #include <openssl/ec.h>
 #endif
 
-#if defined(_MSC_VER) && !defined(_M_ARM64)
-#include <openssl/applink.c>
-#endif
-
 /*
  * Allocate space in SSL objects in which to store a struct tls_session
  * pointer back to parent.
