@@ -1,0 +1,41 @@
+From ee9c7d2603eadfe7955fcbf6dd840de49b8aa493 Mon Sep 17 00:00:00 2001
+From: Simon Rozman <simon@rozman.si>
+Date: Thu, 6 Jan 2022 17:01:11 +0100
+Subject: [PATCH] nmake: add missing libs
+
+When compiling statically with vcpkg some dependent .lib files have to
+be added - previously added implicitly by imported DLL .libs.
+
+Signed-off-by: Simon Rozman <simon@rozman.si>
+---
+ lib/Makefile.w32-vc | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/lib/Makefile.w32-vc b/lib/Makefile.w32-vc
+index 42e7e96..df84858 100644
+--- a/lib/Makefile.w32-vc
++++ b/lib/Makefile.w32-vc
+@@ -69,17 +69,17 @@ OPENSSL_INC=$(OPENSSL_HOME)\include
+ OPENSSL_LIB=$(OPENSSL_HOME)\lib
+ 
+ OPENSSL_CFLAGS=-I$(OPENSSL_INC) -DENABLE_PKCS11H_OPENSSL
+-OPENSSL_LIBS=-LIBPATH:$(OPENSSL_LIB) user32.lib advapi32.lib $(OPENSSL_STATIC)
++OPENSSL_LIBS=-LIBPATH:$(OPENSSL_LIB) user32.lib advapi32.lib crypt32.lib ws2_32.lib $(OPENSSL_STATIC)
+ !endif
+ 
+ CFLAGS = -I../include $(OPENSSL_CFLAGS) -DWIN32 -DWIN32_LEAN_AND_MEAN -D_MBCS -D_CRT_SECURE_NO_DEPRECATE -D_WIN32_WINNT=0x0400
+ CC=cl.exe
+ RC=rc.exe
+-CCPARAMS=/c
++CCPARAMS=/c
+ 
+ LINK32=link.exe
+ LIB32=lib.exe
+-LINK32_FLAGS=/dll
++LINK32_FLAGS=/dll
+ 
+ HEADERS = \
+ 	config.h \
+-- 
+2.34.1.windows.1
+
