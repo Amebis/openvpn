@@ -1,8 +1,7 @@
 set(VCPKG_TARGET_ARCHITECTURE x64)
 set(VCPKG_CRT_LINKAGE static)
-set(VCPKG_LIBRARY_LINKAGE dynamic)
+set(VCPKG_LIBRARY_LINKAGE static)
 
-set(STATIC_PORTS lz4 lzo)
-if(PORT IN_LIST STATIC_PORTS)
-    set(VCPKG_LIBRARY_LINKAGE static)
+if(PORT STREQUAL "wintun")
+    set(VCPKG_LIBRARY_LINKAGE dynamic)
 endif()
