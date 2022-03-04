@@ -1285,7 +1285,7 @@ static int
 tls_ctx_use_external_rsa_key(struct tls_root_ctx *ctx, EVP_PKEY *pkey)
 {
     RSA *rsa = NULL;
-    RSA *pub_rsa;
+    const RSA *pub_rsa;
     RSA_METHOD *rsa_meth;
 
     ASSERT(NULL != ctx);
@@ -2080,7 +2080,7 @@ print_cert_details(X509 *cert, char *buf, size_t buflen)
 #ifndef OPENSSL_NO_EC
     if (typeid == EVP_PKEY_EC && EVP_PKEY_get0_EC_KEY(pkey) != NULL)
     {
-        EC_KEY *ec = EVP_PKEY_get0_EC_KEY(pkey);
+        const EC_KEY *ec = EVP_PKEY_get0_EC_KEY(pkey);
         const EC_GROUP *group = EC_KEY_get0_group(ec);
 
         int nid = EC_GROUP_get_curve_name(group);
