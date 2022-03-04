@@ -841,7 +841,7 @@ retrieve_capi_data(EVP_PKEY *pkey)
 
     if (pkey && EVP_PKEY_id(pkey) == EVP_PKEY_RSA)
     {
-        RSA *rsa = EVP_PKEY_get0_RSA(pkey);
+        const RSA *rsa = EVP_PKEY_get0_RSA(pkey);
         if (rsa)
         {
             cd = (CAPI_DATA *)RSA_meth_get0_app_data(RSA_get_method(rsa));
@@ -1008,7 +1008,8 @@ pkey_rsa_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 static int
 ssl_ctx_set_rsakey(SSL_CTX *ssl_ctx, CAPI_DATA *cd, EVP_PKEY *pkey)
 {
-    RSA *rsa = NULL, *pub_rsa;
+    RSA* rsa = NULL;
+    const RSA *pub_rsa;
     RSA_METHOD *my_rsa_method = NULL;
     bool rsa_method_set = false;
 
