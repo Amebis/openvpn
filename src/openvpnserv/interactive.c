@@ -40,6 +40,7 @@
 #include "compat-versionhelpers.h"
 #endif
 
+#include "basic.h"
 #include "openvpn-msg.h"
 #include "validate.h"
 #include "block_dns.h"
@@ -58,6 +59,7 @@ static HANDLE exit_event = NULL;
 static settings_t settings;
 static HANDLE rdns_semaphore = NULL;
 #define RDNS_TIMEOUT 600  /* seconds to wait for the semaphore */
+static NETIO_STATUS(NETIOAPI_API_ *pSetInterfaceDnsSettings)(_In_ GUID Interface, _In_ const DNS_INTERFACE_SETTINGS *Settings);
 
 #define TUN_IOCTL_REGISTER_RINGS CTL_CODE(51820U, 0x970U, METHOD_BUFFERED, FILE_READ_DATA | FILE_WRITE_DATA)
 
@@ -92,6 +94,7 @@ typedef enum {
     undo_dns4,
     undo_dns6,
     undo_domain,
+    undo_search_domains,
     _undo_type_max
 } undo_type_t;
 typedef list_item_t *undo_lists_t[_undo_type_max];
@@ -163,6 +166,16 @@ CloseHandleEx(LPHANDLE handle)
         *handle = INVALID_HANDLE_VALUE;
     }
     return INVALID_HANDLE_VALUE;
+}
+
+static void
+FreeLibraryEx(HMODULE *handle)
+{
+    if (handle && *handle)
+    {
+        FreeLibrary(*handle);
+        *handle = NULL;
+    }
 }
 
 static HANDLE
@@ -581,6 +594,24 @@ ConvertInterfaceNameToIndex(const wchar_t *ifname, NET_IFINDEX *index)
        MsgToEventLog(M_ERR, L"Failed to find interface index for <%s>", ifname);
    }
    return err;
+}
+
+static DWORD
+ConvertInterfaceNameToGuid(const wchar_t *ifname, GUID *guid)
+{
+    NET_LUID luid;
+    DWORD err;
+
+    err = ConvertInterfaceAliasToLuid(ifname, &luid);
+    if (err == ERROR_SUCCESS)
+    {
+        err = ConvertInterfaceLuidToGuid(&luid, guid);
+    }
+    if (err != ERROR_SUCCESS)
+    {
+        MsgToEventLog(M_ERR, L"Failed to find interface GUID for <%s>", ifname);
+    }
+    return err;
 }
 
 static BOOL
@@ -1193,8 +1224,85 @@ SetDNSDomain(const wchar_t *if_name, const char *domain, undo_lists_t *lists)
    return err;
 }
 
+/**
+ * Set interface specific DNS domain search suffix
+ * @param  if_name    name of the the interface
+ * @param  domains    comma-separated list of domain names
+ * @param  lists      pointer to the undo lists. If NULL
+ *                    undo lists are not altered.
+ * Will delete the currently set value if domains is an empty list.
+ */
 static DWORD
-HandleDNSConfigMessage(const dns_cfg_message_t *msg, undo_lists_t *lists)
+SetDNSSearchDomains(const wchar_t *if_name, const char *domains, undo_lists_t *lists)
+{
+    GUID guid;
+
+    DWORD err = ConvertInterfaceNameToGuid(if_name, &guid);
+    if (err != ERROR_SUCCESS)
+    {
+        return err;
+    }
+
+    wchar_t *wdomains = utf8to16(domains); /* utf8 to wide-char */
+    if (!wdomains)
+    {
+        return ERROR_OUTOFMEMORY;
+    }
+
+    /* free undo list if previously set */
+    if (lists)
+    {
+        free(RemoveListItem(&(*lists)[undo_search_domains], CmpWString, (void *)if_name));
+    }
+
+    if (pSetInterfaceDnsSettings)
+    {
+        DNS_INTERFACE_SETTINGS settings = {
+            .Version = DNS_INTERFACE_SETTINGS_VERSION1,
+            .Flags = DNS_SETTING_SEARCHLIST,
+            .SearchList = wdomains,
+        };
+        err = pSetInterfaceDnsSettings(guid, &settings);
+    }
+    else
+    {
+        WCHAR path[256];
+        HKEY key;
+
+        /* Pre Windows 10 1809, we can set only one domain. */
+        LPWSTR wdomains_end = wcschr(wdomains, L',');
+        if (wdomains_end)
+        {
+            *wdomains_end = L'\0';
+        }
+
+        /* Set TCP/IP interface-specific domain search path. */
+        openvpn_swprintf(path, sizeof(path), L"SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\" _L(PRIXGUID), PRIGUID_PARAM(guid));
+        err = RegOpenKeyExW(HKEY_LOCAL_MACHINE, path, 0, KEY_SET_VALUE, &key);
+        if (err == ERROR_SUCCESS)
+        {
+            err = RegSetKeyValueW(key, NULL, L"Domain", REG_SZ, wdomains, (DWORD)(wcslen(wdomains) + 1) * sizeof(WCHAR));
+            RegCloseKey(key);
+        }
+    }
+
+    /* Add to undo list if search domains are non-empty */
+    if (err == 0 && wdomains[0] && lists)
+    {
+        wchar_t *tmp_name = _wcsdup(if_name);
+        if (!tmp_name || AddListItem(&(*lists)[undo_search_domains], tmp_name))
+        {
+            free(tmp_name);
+            err = ERROR_OUTOFMEMORY;
+        }
+    }
+
+    free(wdomains);
+    return err;
+}
+
+static DWORD
+HandleDNSConfigMessage(dns_cfg_message_t *msg, undo_lists_t *lists)
 {
     DWORD err = 0;
     wchar_t addr[46]; /* large enough to hold string representation of an ipv4 / ipv6 address */
@@ -1212,11 +1320,13 @@ HandleDNSConfigMessage(const dns_cfg_message_t *msg, undo_lists_t *lists)
         return ERROR_MESSAGE_DATA;
     }
 
-    /* use a non-const reference with limited scope to enforce null-termination of strings from client */
+    /* enforce null-termination of strings from client */
+    msg->iface.name[_countof(msg->iface.name)-1] = '\0';
+    msg->domains[_countof(msg->domains)-1] = '\0';
+    char *search_domains = strchr(msg->domains, ',');
+    if (search_domains)
     {
-        dns_cfg_message_t *msgptr = (dns_cfg_message_t *) msg;
-        msgptr->iface.name[_countof(msg->iface.name)-1] = '\0';
-        msgptr->domains[_countof(msg->domains)-1] = '\0';
+        *(search_domains++) = '\0';
     }
 
     wchar_t *wide_name = utf8to16(msg->iface.name); /* utf8 to wide-char */
@@ -1244,6 +1354,11 @@ HandleDNSConfigMessage(const dns_cfg_message_t *msg, undo_lists_t *lists)
         {
             /* setting an empty domain removes any previous value */
             err = SetDNSDomain(wide_name, "", lists);
+        }
+        if (search_domains)
+        {
+            /* setting an empty search domain list removes any previous value */
+            err = SetDNSSearchDomains(wide_name, "", lists);
         }
         goto out;  /* job done */
     }
@@ -1285,6 +1400,15 @@ HandleDNSConfigMessage(const dns_cfg_message_t *msg, undo_lists_t *lists)
     if (msg->domains[0])
     {
         err = SetDNSDomain(wide_name, msg->domains, lists);
+        if (err)
+        {
+            goto out;
+        }
+    }
+
+    if (search_domains)
+    {
+        err = SetDNSSearchDomains(wide_name, search_domains, lists);
     }
 
 out:
@@ -1578,6 +1702,10 @@ Undo(undo_lists_t *lists)
 
                 case undo_domain:
                     SetDNSDomain(item->data, "", NULL);
+                    break;
+
+                case undo_search_domains:
+                    SetDNSSearchDomains(item->data, "", NULL);
                     break;
 
                 case block_dns:
@@ -2106,6 +2234,7 @@ ServiceStartInteractive(DWORD dwArgc, LPTSTR *lpszArgv)
     list_item_t *threads = NULL;
     PHANDLE handles = NULL;
     DWORD handle_count;
+    HMODULE iphlpapi = NULL;
 
     service = RegisterServiceCtrlHandlerEx(interactive_service.name, ServiceCtrlInteractive, &status);
     if (!service)
@@ -2118,6 +2247,12 @@ ServiceStartInteractive(DWORD dwArgc, LPTSTR *lpszArgv)
     status.dwWin32ExitCode = NO_ERROR;
     status.dwWaitHint = 3000;
     ReportStatusToSCMgr(service, &status);
+
+    iphlpapi = LoadLibraryEx(TEXT("iphlpapi.dll"), NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (iphlpapi)
+    {
+        *(FARPROC *) &pSetInterfaceDnsSettings = GetProcAddress(iphlpapi, "SetInterfaceDnsSettings");
+    }
 
     /* Read info from registry in key HKLM\SOFTWARE\OpenVPN */
     error = GetOpenvpnSettings(&settings);
@@ -2235,6 +2370,7 @@ out:
     CloseHandleEx(&io_event);
     CloseHandleEx(&exit_event);
     CloseHandleEx(&rdns_semaphore);
+    FreeLibraryEx(&iphlpapi);
 
     status.dwCurrentState = SERVICE_STOPPED;
     status.dwWin32ExitCode = error;
