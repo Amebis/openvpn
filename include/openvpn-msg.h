@@ -80,7 +80,7 @@ typedef struct {
 typedef struct {
     message_header_t header;
     interface_t iface;
-    char domains[512];
+    char domains[1024];
     short family;
     int addr_len;
     inet_address_t addr[4]; /* support up to 4 dns addresses */
