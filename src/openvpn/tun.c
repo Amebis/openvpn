@@ -153,8 +153,9 @@ do_dns_domain_service(bool add, const struct tuntap *tt)
     ack_message_t ack;
     struct gc_arena gc = gc_new();
     HANDLE pipe = tt->options.msg_channel;
+    size_t offset;
 
-    if (!tt->options.domain) /* no  domain to add or delete */
+    if (!tt->options.domain && !tt->options.domain_search_list_len) /* no domain to add or delete */
     {
         return true;
     }
@@ -173,10 +174,24 @@ do_dns_domain_service(bool add, const struct tuntap *tt)
     };
 
     strncpynt(dns.iface.name, tt->actual_name, sizeof(dns.iface.name));
-    strncpynt(dns.domains, tt->options.domain, sizeof(dns.domains));
-    /* truncation of domain name is not checked as it can't happen
-     * with 512 bytes room in dns.domains.
-     */
+    if (tt->options.domain)
+    {
+        strncpynt(dns.domains, tt->options.domain, sizeof(dns.domains));
+        /* truncation of domain name is not checked as it can't happen
+         * with 1024 bytes room in dns.domains.
+         */
+    }
+    else
+    {
+        dns.domains[0] = '\0';
+    }
+    offset = strnlen(dns.domains, sizeof(dns.domains));
+    for (int i = 0; i < tt->options.domain_search_list_len && strlen(tt->options.domain_search_list[i]) + 2 < sizeof(dns.domains) - offset; ++i)
+    {
+        dns.domains[offset++] = ',';
+        strncpynt(dns.domains + offset, tt->options.domain_search_list[i], sizeof(dns.domains) - offset);
+        offset += strnlen(dns.domains + offset, sizeof(dns.domains) - offset);
+    }
 
     msg(D_LOW, "%s dns domain on '%s' (if_index = %d) using service",
             (add ? "Setting" : "Deleting"), dns.iface.name, dns.iface.index);
