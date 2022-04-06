@@ -210,6 +210,7 @@
     <ClCompile Include="..\openvpn\block_dns.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\openvpn\basic.h" />
     <ClInclude Include="..\openvpn\ring_buffer.h" />
     <ClInclude Include="service.h" />
     <ClInclude Include="validate.h" />
