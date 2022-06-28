@@ -2349,16 +2349,13 @@ wait:
         else if (error == WAIT_FAILED)
         {
             MsgToEventLog(M_SYSERR, TEXT("WaitForMultipleObjects failed"));
-            SetEvent(exit_event);
-            /* Give some time for worker threads to exit and then terminate */
-            Sleep(1000);
+            CloseHandleEx(&pipe);
             break;
         }
         else if (!threads)
         {
             /* Exit event signaled (or abandoned). */
             CloseHandleEx(&pipe);
-            ResetEvent(exit_event);
             error = NO_ERROR;
             break;
         }
@@ -2373,6 +2370,20 @@ wait:
             CloseHandleEx(&thread);
             goto wait;
         }
+    }
+
+    /* Wait for worker threads to end gracefully. */
+    status.dwCurrentState = SERVICE_STOP_PENDING;
+    ReportStatusToSCMgr(service, &status);
+    SetEvent(exit_event);
+    while (threads)
+    {
+        ReportStatusToSCMgr(service, &status);
+
+        HANDLE thread = threads->data;
+        WaitForSingleObject(thread, INFINITE);
+        RemoveListItem(&threads, CmpHandle, thread);
+        CloseHandleEx(&thread);
     }
 
 out:
