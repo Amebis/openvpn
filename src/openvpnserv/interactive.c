@@ -2339,27 +2339,36 @@ wait:
             ResetOverlapped(&overlapped);
             pipe = next_pipe;
         }
+        else if (error == WAIT_ABANDONED_0)
+        {
+            /* Our pending IO was abandoned, create a new one. */
+            CloseHandleEx(&pipe);
+            ResetOverlapped(&overlapped);
+            pipe = CreateClientPipeInstance();
+        }
+        else if (error == WAIT_FAILED)
+        {
+            MsgToEventLog(M_SYSERR, TEXT("WaitForMultipleObjects failed"));
+            SetEvent(exit_event);
+            /* Give some time for worker threads to exit and then terminate */
+            Sleep(1000);
+            break;
+        }
+        else if (!threads)
+        {
+            /* Exit event signaled (or abandoned). */
+            CloseHandleEx(&pipe);
+            ResetEvent(exit_event);
+            error = NO_ERROR;
+            break;
+        }
         else
         {
-            if (error == WAIT_FAILED)
-            {
-                MsgToEventLog(M_SYSERR, TEXT("WaitForMultipleObjects failed"));
-                SetEvent(exit_event);
-                /* Give some time for worker threads to exit and then terminate */
-                Sleep(1000);
-                break;
-            }
-            if (!threads)
-            {
-                /* exit event signaled */
-                CloseHandleEx(&pipe);
-                ResetEvent(exit_event);
-                error = NO_ERROR;
-                break;
-            }
-
-            /* Worker thread ended */
-            HANDLE thread = RemoveListItem(&threads, CmpHandle, handles[error]);
+            /* Worker thread ended (or abandoned). */
+            HANDLE thread = RemoveListItem(&threads, CmpHandle,
+                                           WAIT_OBJECT_0 <= error && error < WAIT_OBJECT_0 + handle_count ? handles[error - WAIT_OBJECT_0] :
+                                           WAIT_ABANDONED_0 <= error && error < WAIT_ABANDONED_0 + handle_count ? handles[error - WAIT_ABANDONED_0] :
+                                           NULL);
             UpdateWaitHandles(&handles, &handle_count, io_event, exit_event, threads);
             CloseHandleEx(&thread);
             goto wait;
