@@ -1668,7 +1668,7 @@ HandleMessage(HANDLE pipe, HANDLE ovpn_proc, ring_buffer_handles_t *ring_buffer_
 
 out:
     WritePipeAsync(pipe, &ack, sizeof(ack), count, events);
-}
+    }
 
 
 static VOID
@@ -2004,15 +2004,16 @@ RunOpenvpn(LPVOID p)
         free(input);
     }
 
+    HANDLE handles[] = { exit_event, proc_info.hProcess };
     while (TRUE)
     {
-        DWORD bytes = PeekNamedPipeAsync(ovpn_pipe, 1, &exit_event);
+        DWORD bytes = PeekNamedPipeAsync(ovpn_pipe, _countof(handles), handles);
         if (bytes == 0)
         {
             break;
         }
 
-        HandleMessage(ovpn_pipe, proc_info.hProcess, &ring_buffer_handles, bytes, 1, &exit_event, &undo_lists);
+        HandleMessage(ovpn_pipe, proc_info.hProcess, &ring_buffer_handles, bytes, _countof(handles), handles, &undo_lists);
     }
 
     WaitForSingleObject(proc_info.hProcess, IO_TIMEOUT);
