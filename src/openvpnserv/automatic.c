@@ -121,10 +121,11 @@ match(const WIN32_FIND_DATA *find, LPCTSTR ext)
         return true;
     }
 
-    /* find the pointer to that last '.' in filename and match ext against the rest */
-
-    const TCHAR *p = _tcsrchr(find->cFileName, TEXT('.'));
-    return p && p != find->cFileName && _tcsicmp(p + 1, ext) == 0;
+    size_t filename_len = _tcslen(find->cFileName);
+    size_t ext_len = _tcslen(ext);
+    return filename_len > ext_len + 1
+           && find->cFileName[filename_len - ext_len - 1] == TEXT('.')
+           && _tcsicmp(&find->cFileName[filename_len - ext_len], ext) == 0;
 }
 
 /*
