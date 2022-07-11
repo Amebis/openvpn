@@ -4822,9 +4822,14 @@ read_config_file(struct options *options,
 {
     const int max_recursive_levels = 10;
     FILE *fp;
+    struct buffer multiline = { 0 };
     int line_num;
     char line[OPTION_LINE_SIZE+1];
     char *p[MAX_PARMS+1];
+#ifdef _WIN32
+    size_t file_len;
+    static const char dpapi_ext[] = ".dpapi";
+#endif
 
     ++level;
     if (level <= max_recursive_levels)
@@ -4833,14 +4838,21 @@ read_config_file(struct options *options,
         {
             fp = stdin;
         }
+#ifdef _WIN32
+        else if ((file_len = strlen(file)) > _countof(dpapi_ext) - 1 && !stricmp(file + file_len - (_countof(dpapi_ext) - 1), dpapi_ext))
+        {
+            multiline = buffer_unprotect_file(file, &options->gc);
+            fp = NULL;
+        }
+#endif
         else
         {
             fp = platform_fopen(file, "r");
         }
-        if (fp)
+        line_num = 0;
+        if (fp || buf_valid(&multiline))
         {
-            line_num = 0;
-            while (fgets(line, sizeof(line), fp))
+            while (fp && fgets(line, sizeof(line), fp) || !fp && buf_gets(&multiline, line, sizeof(line)))
             {
                 int offset = 0;
                 CLEAR(p);
@@ -4856,20 +4868,21 @@ read_config_file(struct options *options,
                 {
                     offset = 3;
                 }
-                if (parse_line(line + offset, p, SIZE(p)-1, file, line_num, msglevel, &options->gc))
+                if (parse_line(line + offset, p, SIZE(p) - 1, file, line_num, msglevel, &options->gc))
                 {
                     bypass_doubledash(&p[0]);
-                    int lines_inline = check_inline_file_via_fp(fp, p, &options->gc);
+                    int lines_inline = fp ? check_inline_file_via_fp(fp, p, &options->gc) : check_inline_file_via_buf(&multiline, p, &options->gc);
                     add_option(options, p, lines_inline, file, line_num, level,
                                msglevel, permission_mask, option_types_found,
                                es);
                     line_num += lines_inline;
                 }
             }
-            if (fp != stdin)
+            if (fp && fp != stdin)
             {
                 fclose(fp);
             }
+            buf_clear(&multiline);
         }
         else
         {
