@@ -39,6 +39,10 @@
 
 #include <wchar.h>
 
+#ifdef _WIN32
+#include <dpapi.h>
+#endif
+
 size_t
 array_mult_safe(const size_t m1, const size_t m2, const size_t extra)
 {
@@ -284,6 +288,27 @@ buf_puts(struct buffer *buf, const char *str)
     return ret;
 }
 
+bool
+buf_gets(struct buffer *buf, char *str, int num)
+{
+    int len = buf_len(buf);
+    if (!len)
+    {
+        return false;
+    }
+
+    int n = min_int(len, num - 1);
+    const char *input = buf_str(buf);
+    const char *p = memchr(input, '\n', n);
+    if (p)
+    {
+        n = p + 1 - input;
+    }
+    memcpy(str, input, n);
+    str[n] = 0;
+    buf_advance(buf, n);
+    return true;
+}
 
 /*
  * This is necessary due to certain buggy implementations of snprintf,
@@ -1421,5 +1446,61 @@ buffer_read_from_file(const char *filename, struct gc_arena *gc)
 
 cleanup:
     fclose(fp);
+    return ret;
+}
+
+struct buffer
+buffer_unprotect_file(const char *filename, struct gc_arena *gc)
+{
+    struct buffer ret = { 0 };
+
+    if (filename)
+    {
+        FILE *fp = platform_fopen(filename, "rb");
+        if (fp)
+        {
+            fseek(fp, 0L, SEEK_END);
+            long int size = ftell(fp);
+            fseek(fp, 0L, SEEK_SET);
+            struct buffer data = alloc_buf_gc(size, gc);
+            ASSERT(buf_inc_len(&data, fread(BPTR(&data), 1, (size_t)size, fp)));
+            if (buf_len(&data) == size)
+            {
+#ifdef _WIN32
+                DATA_BLOB in = { .cbData = size, .pbData = BPTR(&data) };
+                DATA_BLOB out = { 0 };
+                if (CryptUnprotectData(&in, NULL, NULL, NULL, NULL, CRYPTPROTECT_UI_FORBIDDEN, &out))
+                {
+                    free_buf_gc(&data, gc);
+                    ret = alloc_buf_gc(out.cbData, gc);
+                    memcpy(BPTR(&ret), out.pbData, out.cbData);
+                    ASSERT(buf_inc_len(&ret, out.cbData));
+                    secure_memzero(out.pbData, out.cbData);
+                    LocalFree(out.pbData);
+                }
+                else
+                {
+                    msg(M_WARN | M_ERRNO, "Could not unprotect file '%s'", filename);
+                    free_buf_gc(&data, gc);
+                }
+#else  /* ifdef _WIN32 */
+                ret = data;
+#endif
+            }
+            else
+            {
+                free_buf_gc(&data, gc);
+            }
+            fclose(fp);
+        }
+        else
+        {
+            if (errno == EACCES)
+            {
+                msg(M_WARN | M_ERRNO, "Could not access file '%s'", filename);
+            }
+        }
+    }
+
     return ret;
 }
