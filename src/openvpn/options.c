@@ -4821,7 +4821,8 @@ read_config_file(struct options *options,
                  struct env_set *es)
 {
     const int max_recursive_levels = 10;
-    FILE *fp;
+    bool is_stdin = false;
+    struct buffer multiline = { 0 };
     int line_num;
     char line[OPTION_LINE_SIZE+1];
     char *p[MAX_PARMS+1];
@@ -4831,49 +4832,46 @@ read_config_file(struct options *options,
     {
         if (streq(file, "stdin"))
         {
-            fp = stdin;
+            is_stdin = true;
         }
         else
         {
-            fp = platform_fopen(file, "r");
-        }
-        if (fp)
-        {
-            line_num = 0;
-            while (fgets(line, sizeof(line), fp))
+            multiline = buffer_unprotect_file(file, &options->gc);
+            if (!buf_valid(&multiline))
             {
-                int offset = 0;
-                CLEAR(p);
-                ++line_num;
-                if (strlen(line) == OPTION_LINE_SIZE)
-                {
-                    msg(msglevel, "In %s:%d: Maximum option line length (%d) exceeded, line starts with %s",
-                        file, line_num, OPTION_LINE_SIZE, line);
-                }
+                msg(msglevel, "In %s:%d: Error opening configuration file: %s", top_file, top_line, file);
+            }
+        }
+        line_num = 0;
+        for (;; )
+        {
+            if (is_stdin && !fgets(line, sizeof(line), stdin) || !is_stdin && !buf_gets(&multiline, line, sizeof(line)))
+            {
+                break;
+            }
+            int offset = 0;
+            CLEAR(p);
+            ++line_num;
+            if (strlen(line) == OPTION_LINE_SIZE)
+            {
+                msg(msglevel, "In %s:%d: Maximum option line length (%d) exceeded, line starts with %s",
+                    file, line_num, OPTION_LINE_SIZE, line);
+            }
 
-                /* Ignore UTF-8 BOM at start of stream */
-                if (line_num == 1 && strncmp(line, "\xEF\xBB\xBF", 3) == 0)
-                {
-                    offset = 3;
-                }
-                if (parse_line(line + offset, p, SIZE(p)-1, file, line_num, msglevel, &options->gc))
-                {
-                    bypass_doubledash(&p[0]);
-                    int lines_inline = check_inline_file_via_fp(fp, p, &options->gc);
-                    add_option(options, p, lines_inline, file, line_num, level,
-                               msglevel, permission_mask, option_types_found,
-                               es);
-                    line_num += lines_inline;
-                }
-            }
-            if (fp != stdin)
+            /* Ignore UTF-8 BOM at start of stream */
+            if (line_num == 1 && strncmp(line, "\xEF\xBB\xBF", 3) == 0)
             {
-                fclose(fp);
+                offset = 3;
             }
-        }
-        else
-        {
-            msg(msglevel, "In %s:%d: Error opening configuration file: %s", top_file, top_line, file);
+            if (parse_line(line + offset, p, SIZE(p)-1, file, line_num, msglevel, &options->gc))
+            {
+                bypass_doubledash(&p[0]);
+                int lines_inline = is_stdin ? check_inline_file_via_fp(stdin, p, &options->gc) : check_inline_file_via_buf(&multiline, p, &options->gc);
+                add_option(options, p, lines_inline, file, line_num, level,
+                           msglevel, permission_mask, option_types_found,
+                           es);
+                line_num += lines_inline;
+            }
         }
     }
     else

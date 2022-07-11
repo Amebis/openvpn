@@ -436,6 +436,11 @@ __attribute__ ((format(__printf__, 2, 3)))
 bool buf_puts(struct buffer *buf, const char *str);
 
 /*
+ * gets reads a line from buffer
+ */
+bool buf_gets(struct buffer *buf, char *str, int num);
+
+/*
  * Like snprintf but guarantees null termination for size > 0
  */
 bool openvpn_snprintf(char *str, size_t size, const char *format, ...)
@@ -1202,5 +1207,17 @@ struct buffer_list *buffer_list_file(const char *fn, int max_line_len);
  * error
  */
 struct buffer buffer_read_from_file(const char *filename, struct gc_arena *gc);
+
+/**
+ * buffer_unprotect_file - unprotect and copy the content of a file into a buffer
+ *
+ * @param file      path to the file to read
+ * @param gc        the garbage collector to use when allocating the buffer. It
+ *                  is passed to alloc_buf_gc() and therefore can be NULL.
+ *
+ * @return the buffer storing the file content or an invalid buffer in case of
+ * error
+ */
+struct buffer buffer_unprotect_file(const char *filename, struct gc_arena *gc);
 
 #endif /* BUFFER_H */
