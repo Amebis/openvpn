@@ -395,6 +395,7 @@ struct options
     const char *management_addr;
     const char *management_port;
     const char *management_user_pass;
+    bool management_user_pass_inline;
     int management_log_history_cache;
     int management_echo_buffer_size;
     int management_state_buffer_size;
