@@ -2451,6 +2451,7 @@ man_settings_init(struct man_settings *ms,
                   const char *addr,
                   const char *port,
                   const char *pass_file,
+                  bool pass_inline,
                   const char *client_user,
                   const char *client_group,
                   const int log_history_cache,
@@ -2473,7 +2474,12 @@ man_settings_init(struct man_settings *ms,
          */
         if (pass_file)
         {
-            get_user_pass(&ms->up, pass_file, "Management", GET_USER_PASS_PASSWORD_ONLY);
+            unsigned int flags = GET_USER_PASS_PASSWORD_ONLY;
+            if (pass_inline)
+            {
+                flags |= GET_USER_PASS_INLINE_CREDS;
+            }
+            get_user_pass(&ms->up, pass_file, "Management", flags);
         }
 
         /*
@@ -2666,6 +2672,7 @@ management_open(struct management *man,
                 const char *addr,
                 const char *port,
                 const char *pass_file,
+                bool pass_inline,
                 const char *client_user,
                 const char *client_group,
                 const int log_history_cache,
@@ -2685,6 +2692,7 @@ management_open(struct management *man,
                       addr,
                       port,
                       pass_file,
+                      pass_inline,
                       client_user,
                       client_group,
                       log_history_cache,
