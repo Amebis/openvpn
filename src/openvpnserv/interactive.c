@@ -540,6 +540,10 @@ err:
 static VOID
 FreeStartupData(STARTUP_DATA *sud)
 {
+    if (sud->std_input)
+    {
+        SecureZeroMemory(sud->std_input, wcslen(sud->std_input) * sizeof(WCHAR));
+    }
     free(sud->directory);
 }
 
@@ -2069,7 +2073,9 @@ RunOpenvpn(LPVOID p)
     {
         DWORD written;
         WideCharToMultiByte(CP_UTF8, 0, sud.std_input, -1, input, input_size, NULL, NULL);
-        WriteFile(stdin_write, input, (DWORD)strlen(input), &written, NULL);
+        size_t input_len = strlen(input);
+        WriteFile(stdin_write, input, (DWORD)input_len, &written, NULL);
+        SecureZeroMemory(input, input_len);
         free(input);
     }
 
