@@ -18,7 +18,8 @@ server and client mode operations.
   ``pw-file``, if specified, is a password file where the password must
   be on first line. Instead of a filename it can use the keyword stdin
   which will prompt the user for a password to use when OpenVPN is
-  starting.
+  starting. Its content can also be specified in the config file with the
+  ``--management-client-pass`` option. (See section on inline files)
 
   For unix sockets, the default behaviour is to create a unix domain
   socket that may be connected to by any process. Use the
