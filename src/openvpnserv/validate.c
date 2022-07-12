@@ -68,6 +68,11 @@ CheckConfigPath(const WCHAR *workdir, const WCHAR *fname, const settings_t *s)
     WCHAR widepath[MAX_PATH];
 #endif
 
+    if (!wcscmp(fname, L"stdin"))
+    {
+        return TRUE;
+    }
+
     /* convert fname to full path */
     if (PathIsRelativeW(fname) )
     {
