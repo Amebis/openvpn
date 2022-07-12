@@ -2077,6 +2077,7 @@ RunOpenvpn(LPVOID p)
         WriteFile(stdin_write, input, (DWORD)input_len, &written, NULL);
         SecureZeroMemory(input, input_len);
         free(input);
+        CloseHandleEx(&stdin_write);
     }
 
     HANDLE handles[] = { exit_event, proc_info.hProcess };
