@@ -3517,9 +3517,12 @@ options_postprocess_filechecks(struct options *options)
     errs |= check_file_access(CHKACC_FILE|CHKACC_ACPTSTDIN|CHKACC_PRIVATE,
                               options->key_pass_file, R_OK, "--askpass");
 #ifdef ENABLE_MANAGEMENT
-    errs |= check_file_access(CHKACC_FILE|CHKACC_ACPTSTDIN|CHKACC_PRIVATE,
-                              options->management_user_pass, R_OK,
-                              "--management user/password file");
+    if (!options->management_user_pass_inline)
+    {
+        errs |= check_file_access(CHKACC_FILE|CHKACC_ACPTSTDIN|CHKACC_PRIVATE,
+                                  options->management_user_pass, R_OK,
+                                  "--management user/password file");
+    }
 #endif /* ENABLE_MANAGEMENT */
 #if P2MP
     errs |= check_file_access(CHKACC_FILE|CHKACC_ACPTSTDIN|CHKACC_PRIVATE,
@@ -5411,6 +5414,7 @@ add_option(struct options *options,
         if (p[3])
         {
             options->management_user_pass = p[3];
+            options->management_user_pass_inline = false;
         }
     }
     else if (streq(p[0], "management-client-user") && p[1] && !p[2])
@@ -5422,6 +5426,12 @@ add_option(struct options *options,
     {
         VERIFY_PERMISSION(OPT_P_GENERAL);
         options->management_client_group = p[1];
+    }
+    else if (streq(p[0], "management-client-pass") && p[1] && !p[2])
+    {
+        VERIFY_PERMISSION(OPT_P_GENERAL|OPT_P_INLINE);
+        options->management_user_pass = p[1];
+        options->management_user_pass_inline = is_inline;
     }
     else if (streq(p[0], "management-query-passwords") && !p[1])
     {

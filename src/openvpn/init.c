@@ -4075,6 +4075,7 @@ open_management(struct context *c)
                                 c->options.management_addr,
                                 c->options.management_port,
                                 c->options.management_user_pass,
+                                c->options.management_user_pass_inline,
                                 c->options.management_client_user,
                                 c->options.management_client_group,
                                 c->options.management_log_history_cache,
